@@ -9,11 +9,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from alembic import command
 from app.database import build_engine
 
 TEST_DATABASE_URL = os.environ.get(

@@ -5,12 +5,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
 from app.routers import health
 from app.services.instrument_service import InstrumentService
+from sqlalchemy.orm import Session
 
 
 @asynccontextmanager
@@ -22,8 +22,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with Session(get_engine()) as session:
         instrument_service = InstrumentService(session)
         instrument_service.sync_universe()
-        yield
-        get_engine().dispose()
+    yield
+    get_engine().dispose()
 
 
 def create_app() -> FastAPI:
