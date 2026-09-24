@@ -5,12 +5,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
 from app.routers import health
 from app.services.instrument_service import InstrumentService
-from sqlalchemy.orm import Session
 
 
 @asynccontextmanager
