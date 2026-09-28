@@ -1,6 +1,6 @@
 BACKEND := uv run --directory backend
 
-.PHONY: help install db-up db-down migrate migration run lint format typecheck test test-int test-all
+.PHONY: help install db-up db-down migrate migration run front front-test lint format typecheck test test-int test-all
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -22,6 +22,12 @@ migration: ## Generate a migration from the models: make migration m="descriptio
 
 run: ## Start the API with auto-reload
 	$(BACKEND) uvicorn app.main:app --reload
+
+front: ## Start the frontend (proxies /api to the backend)
+	npm --prefix frontend run dev
+
+front-test: ## Frontend unit tests
+	npm --prefix frontend test
 
 lint: ## Check code style
 	$(BACKEND) ruff check .

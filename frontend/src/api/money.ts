@@ -1,0 +1,15 @@
+export function formatEuro(value: string | number): string {
+  return Number(value).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
+}
+
+export function performancePercent(totalValue: string, initialCapital: string): number {
+  const initial = Number(initialCapital)
+  if (initial === 0) {
+    return 0
+  }
+  return ((Number(totalValue) - initial) / initial) * 100
+}
+
+export function positionPnl(quantity: number, averageCost: string, value: string): number {
+  return Number(value) - quantity * Number(averageCost)
+}
