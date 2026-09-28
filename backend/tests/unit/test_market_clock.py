@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.market_clock import is_market_open, last_close, next_open
+from app.market_clock import is_market_open, last_close, next_open, session_open
 
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -49,3 +49,11 @@ def test_results_are_in_utc() -> None:
 def test_naive_datetime_is_rejected() -> None:
     with pytest.raises(ValueError, match="Timezone-aware"):
         is_market_open(datetime.datetime(2026, 9, 29, 10, 0))
+
+
+def test_session_open_on_a_trading_day() -> None:
+    assert session_open(datetime.date(2026, 10, 5)) == _paris(2026, 10, 5, 9, 0)
+
+
+def test_session_open_on_a_holiday_is_missing() -> None:
+    assert session_open(datetime.date(2026, 12, 25)) is None

@@ -2,11 +2,32 @@
 
 import datetime
 from decimal import Decimal
+from enum import StrEnum
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import TimestampedModel
+
+
+class OrderSide(StrEnum):
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+class OrderStatus(StrEnum):
+    PENDING = "PENDING"
+    FILLED = "FILLED"
+    REJECTED = "REJECTED"
 
 
 class Instrument(TimestampedModel):
@@ -50,3 +71,51 @@ class IntradayPrice(OhlcvColumns, TimestampedModel):
 
     instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
     timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Portfolio(TimestampedModel):
+    """Simulated portfolio: cash plus the positions built by filled orders."""
+
+    __tablename__ = "portfolios"
+
+    name: Mapped[str] = mapped_column(String(200))
+    initial_capital: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    cash: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+
+    positions: Mapped[list["Position"]] = relationship(back_populates="portfolio")
+    orders: Mapped[list["Order"]] = relationship(back_populates="portfolio")
+
+
+class Position(TimestampedModel):
+    """Shares held in one instrument. Removed when the quantity falls to zero."""
+
+    __tablename__ = "positions"
+    __table_args__ = (UniqueConstraint("portfolio_id", "instrument_id"),)
+
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="RESTRICT"))
+    quantity: Mapped[int] = mapped_column(Integer)
+    average_cost: Mapped[Decimal] = mapped_column(Numeric(12, 4))
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="positions")
+    instrument: Mapped[Instrument] = relationship()
+
+
+class Order(TimestampedModel):
+    """One buy or sell decision, waiting for a later price, filled, or rejected."""
+
+    __tablename__ = "orders"
+
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="RESTRICT"))
+    side: Mapped[OrderSide] = mapped_column(Enum(OrderSide, native_enum=False, length=8))
+    quantity: Mapped[int] = mapped_column(Integer)
+    status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, native_enum=False, length=16))
+    decision_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    execution_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    fees: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    rejection_reason: Mapped[str | None] = mapped_column(String(200))
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="orders")
+    instrument: Mapped[Instrument] = relationship()
