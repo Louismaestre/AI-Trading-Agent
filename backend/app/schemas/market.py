@@ -3,11 +3,14 @@
 import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Bar(BaseModel):
     """One OHLCV bar: open, high, low, close prices and traded volume over a period."""
+
+    # Allows Bar.model_validate(daily_price) on a database row.
+    model_config = ConfigDict(from_attributes=True)
 
     date: datetime.date
     open: Decimal
