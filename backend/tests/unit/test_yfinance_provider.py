@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pandas as pd
 
-from app.providers.yfinance_provider import _to_bars
+from app.providers.yfinance_provider import _to_bars, _to_intraday_bars
 
 
 def _frame(rows: list[dict[str, float]], dates: list[str]) -> pd.DataFrame:
@@ -47,3 +47,10 @@ def test_rows_with_missing_values_are_skipped() -> None:
 
 def test_empty_frame_gives_no_bars() -> None:
     assert _to_bars(pd.DataFrame()) == []
+
+
+def test_intraday_bars_keep_the_time_in_utc() -> None:
+    bars = _to_intraday_bars(_frame([_row()], ["2026-09-29 10:05"]))
+
+    assert bars[0].timestamp == datetime.datetime(2026, 9, 29, 8, 5, tzinfo=datetime.UTC)
+    assert bars[0].close == Decimal("610.25")

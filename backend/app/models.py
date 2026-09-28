@@ -3,11 +3,8 @@
 import datetime
 from decimal import Decimal
 
-from sqlalchemy import String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.schema import UniqueConstraint
-from sqlalchemy.sql.schema import ForeignKey
-from sqlalchemy.types import BigInteger, Numeric
 
 from app.database import TimestampedModel
 
@@ -25,16 +22,31 @@ class Instrument(TimestampedModel):
     is_active: Mapped[bool] = mapped_column(default=True)
 
 
-class DailyPrice(TimestampedModel):
-    """One OHLCV bar per instrument and trading day."""
+class OhlcvColumns:
+    """Price and volume columns shared by daily and intraday bars."""
 
-    __tablename__ = "daily_prices"
-
-    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
-    date: Mapped[datetime.date] = mapped_column()
-    __table_args__ = (UniqueConstraint("instrument_id", "date"),)
     open: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     high: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     low: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     close: Mapped[Decimal] = mapped_column(Numeric(12, 4))
     volume: Mapped[int] = mapped_column(BigInteger)
+
+
+class DailyPrice(OhlcvColumns, TimestampedModel):
+    """One OHLCV bar per instrument and trading day."""
+
+    __tablename__ = "daily_prices"
+    __table_args__ = (UniqueConstraint("instrument_id", "date"),)
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    date: Mapped[datetime.date] = mapped_column()
+
+
+class IntradayPrice(OhlcvColumns, TimestampedModel):
+    """One 5-minute OHLCV bar per instrument; `timestamp` is the start of the bar, in UTC."""
+
+    __tablename__ = "intraday_prices"
+    __table_args__ = (UniqueConstraint("instrument_id", "timestamp"),)
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))

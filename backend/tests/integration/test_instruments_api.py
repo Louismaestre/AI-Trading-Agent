@@ -1,3 +1,4 @@
+import datetime
 from collections.abc import Iterator
 
 import pytest
@@ -10,19 +11,23 @@ from app.routers.instruments import get_market_data_service
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService
 from app.universe import UNIVERSE
-from tests.fakes import FakeProvider
+from tests.fakes import FakeIntradayProvider, FakeProvider
 
 PRICES_URL = "/api/v1/instruments/MC.PA/prices"
+INTRADAY_URL = "/api/v1/instruments/MC.PA/intraday"
+TEN = datetime.datetime(2026, 9, 29, 8, 0, tzinfo=datetime.UTC)
 
 
 @pytest.fixture
 def client(db_session: Session) -> Iterator[TestClient]:
-    """API wired to the test transaction and to a fake provider instead of Yahoo."""
+    """API wired to the test transaction and to fake providers instead of Yahoo."""
     InstrumentService(db_session).sync_universe()
     app = create_app()
     app.dependency_overrides[get_session] = lambda: db_session
     app.dependency_overrides[get_market_data_service] = lambda: MarketDataService(
-        db_session, fetch_bars=FakeProvider()
+        db_session,
+        fetch_bars=FakeProvider(),
+        fetch_intraday=FakeIntradayProvider(first=TEN, count=3),
     )
     # No `with`: the startup sync would use the real database instead of the test one.
     yield TestClient(app)
@@ -66,3 +71,29 @@ def test_invalid_date_is_422(client: TestClient) -> None:
     response = client.get(PRICES_URL, params={"start": "abc", "end": "2026-09-10"})
 
     assert response.status_code == 422
+
+
+def test_sync_then_read_intraday(client: TestClient) -> None:
+    sync = client.post("/api/v1/instruments/sync-intraday", json={"start": TEN.isoformat()})
+    end = TEN + datetime.timedelta(hours=1)
+    bars = client.get(INTRADAY_URL, params={"start": TEN.isoformat(), "end": end.isoformat()})
+
+    assert sync.json()["bars_stored"] == 3 * len(UNIVERSE)
+    assert bars.status_code == 200
+    assert [bar["timestamp"] for bar in bars.json()] == [
+        "2026-09-29T08:00:00Z",
+        "2026-09-29T08:05:00Z",
+        "2026-09-29T08:10:00Z",
+    ]
+
+
+def test_intraday_without_timezone_is_422(client: TestClient) -> None:
+    response = client.get(INTRADAY_URL, params={"start": "2026-09-29T10:00:00"})
+
+    assert response.status_code == 422
+
+
+def test_intraday_of_unknown_ticker_is_404(client: TestClient) -> None:
+    response = client.get("/api/v1/instruments/NOPE.PA/intraday", params={"start": TEN.isoformat()})
+
+    assert response.status_code == 404

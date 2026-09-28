@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
+    "exchange-calendars>=4.13.2",
     "fastapi>=0.141.1",
     "pandas>=3.0.6",
     "psycopg[binary]>=3.3.6",
@@ -51,7 +52,7 @@ plugins = ["pydantic.mypy"]
 files = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["yfinance"]
+module = ["yfinance", "exchange_calendars"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
