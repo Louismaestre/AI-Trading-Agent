@@ -1,28 +1,16 @@
-import { useEffect, useState } from 'react'
-
-import { getHealth, type Health } from '../api/health'
+import { useHealth } from '../api/client'
+import type { Health } from '../api/types'
 
 export function HomePage() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getHealth()
-      .then(setHealth)
-      .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : 'Unknown error')
-      })
-  }, [])
+  const { data: health, error, isPending } = useHealth()
 
   return (
     <main className="mx-auto max-w-lg px-6 py-16 font-sans text-slate-800">
       <h1 className="text-2xl font-semibold tracking-tight">AI Trading Agent</h1>
       <p className="mt-2 text-sm text-slate-500">Backend health check</p>
-      {error ? <p className="mt-8 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="mt-8 text-sm text-red-700">{error.message}</p> : null}
       {health ? <HealthCard health={health} /> : null}
-      {!health && !error ? (
-        <p className="mt-8 text-sm text-slate-500">Loading…</p>
-      ) : null}
+      {isPending ? <p className="mt-8 text-sm text-slate-500">Loading…</p> : null}
     </main>
   )
 }
