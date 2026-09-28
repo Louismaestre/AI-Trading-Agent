@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
-from app.routers import health
+from app.routers import health, instruments
 from app.services.instrument_service import InstrumentService
 
 
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
     """A factory rather than a global, so each test can build its own app."""
     app = FastAPI(title="AI-Trading-Agent", lifespan=lifespan)
     app.include_router(health.router, prefix="/api/v1")
+    app.include_router(instruments.router, prefix="/api/v1")
     return app
 
 

@@ -72,6 +72,17 @@ class MarketDataService:
         newest_first = self._session.scalars(statement).all()
         return [Bar.model_validate(price) for price in reversed(newest_first)]
 
+    def get_prices(self, ticker: str, start: datetime.date, end: datetime.date) -> list[Bar]:
+        """Stored bars between `start` and `end` (both included), oldest first."""
+        instrument = self._get_instrument(ticker)
+        statement = (
+            select(DailyPrice)
+            .where(DailyPrice.instrument_id == instrument.id, DailyPrice.date.between(start, end))
+            .order_by(DailyPrice.date.asc())
+        )
+        oldest_first = self._session.scalars(statement).all()
+        return [Bar.model_validate(price) for price in oldest_first]
+
     def _get_instrument(self, ticker: str) -> Instrument:
         instrument = self._session.scalar(select(Instrument).where(Instrument.ticker == ticker))
         if instrument is None:

@@ -1,34 +1,16 @@
 import datetime
-from decimal import Decimal
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.market import Bar
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
 from app.universe import UNIVERSE
+from tests.fakes import FakeProvider
 
 MONDAY = datetime.date(2026, 9, 7)
 FRIDAY = datetime.date(2026, 9, 11)
 SUNDAY = datetime.date(2026, 9, 13)
-
-
-class FakeProvider:
-    """One bar per weekday, close = day of month. Records every call."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, datetime.date, datetime.date]] = []
-
-    def __call__(self, ticker: str, start: datetime.date, end: datetime.date) -> list[Bar]:
-        self.calls.append((ticker, start, end))
-        days = (start + datetime.timedelta(days=n) for n in range((end - start).days + 1))
-        return [_bar(day) for day in days if day.weekday() < 5]
-
-
-def _bar(day: datetime.date) -> Bar:
-    price = Decimal(day.day)
-    return Bar(date=day, open=price, high=price, low=price, close=price, volume=1000)
 
 
 @pytest.fixture
