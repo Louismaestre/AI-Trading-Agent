@@ -31,6 +31,15 @@ def last_close(now: datetime.datetime) -> datetime.datetime:
     return _to_datetime(_calendar().previous_close(_to_timestamp(now)))
 
 
+def session_open(day: datetime.date) -> datetime.datetime | None:
+    """Opening bell of `day` in UTC, or None if the exchange is closed that day."""
+    calendar = _calendar()
+    session = pd.Timestamp(day)
+    if not calendar.is_session(session):
+        return None
+    return _to_datetime(calendar.session_open(session))
+
+
 def ensure_aware(moment: datetime.datetime) -> datetime.datetime:
     """Reject naive datetimes: without a timezone, "10:00" is ambiguous."""
     if moment.tzinfo is None:

@@ -5,11 +5,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
-from app.routers import health, instruments, market
+from app.routers import health, instruments, market, portfolios
 from app.services.instrument_service import InstrumentService
 
 
@@ -29,9 +30,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """A factory rather than a global, so each test can build its own app."""
     app = FastAPI(title="AI-Trading-Agent", lifespan=lifespan)
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
+
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(instruments.router, prefix="/api/v1")
     app.include_router(market.router, prefix="/api/v1")
+    app.include_router(portfolios.router, prefix="/api/v1")
     return app
 
 

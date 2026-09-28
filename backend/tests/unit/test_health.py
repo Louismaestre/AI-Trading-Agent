@@ -23,6 +23,13 @@ def _client_with_status(status: ComponentStatus) -> TestClient:
     return TestClient(app)
 
 
+def test_root_redirects_to_the_interactive_docs() -> None:
+    response = TestClient(create_app(), follow_redirects=False).get("/")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+
+
 def test_health_returns_200_when_everything_is_ok() -> None:
     response = _client_with_status("ok").get("/api/v1/health")
 
