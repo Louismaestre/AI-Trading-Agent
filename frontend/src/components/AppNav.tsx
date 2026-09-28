@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 const links = [
   { to: '/', label: 'Health' },
   { to: '/market', label: 'Market' },
+  { to: '/portfolio', label: 'Portfolio' },
 ]
 
 export function AppNav() {

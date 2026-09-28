@@ -24,6 +24,10 @@ export function getPrices(ticker: string, start: string, end: string): Promise<B
   return getJson(`/api/v1/instruments/${encodeURIComponent(ticker)}/prices?${params}`)
 }
 
+export function createPortfolio(name = 'Demo'): Promise<Portfolio> {
+  return postJson('/api/v1/portfolios', { name })
+}
+
 export function getPortfolio(id: number): Promise<Portfolio> {
   return getJson(`/api/v1/portfolios/${id}`)
 }
@@ -50,6 +54,10 @@ export function usePrices(ticker: string, start: string, end: string) {
     queryFn: () => getPrices(ticker, start, end),
     enabled: Boolean(ticker && start && end),
   })
+}
+
+export function useCreatePortfolio() {
+  return useMutation({ mutationFn: () => createPortfolio() })
 }
 
 export function usePortfolio(id: number | null) {
