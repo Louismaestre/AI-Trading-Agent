@@ -32,3 +32,10 @@ class AnalystDecision(BaseModel):
     confidence: float = Field(ge=0, le=1)
     target_weight: float = Field(ge=0, le=1)
     rationale: str
+
+
+class QuantityProposal(BaseModel):
+    """How many shares the buyer or seller wants to trade now."""
+
+    quantity: int = Field(ge=0)
+    rationale: str
