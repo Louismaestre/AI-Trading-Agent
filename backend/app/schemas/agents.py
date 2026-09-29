@@ -2,8 +2,11 @@
 
 import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+Action = Literal["BUY", "SELL", "HOLD"]
 
 
 class TechnicalSummary(BaseModel):
@@ -22,3 +25,10 @@ class TechnicalSummary(BaseModel):
     return_20d: Decimal | None = None
     volatility_20d: Decimal | None = None
     signals: list[str] = Field(default_factory=list)
+
+
+class AnalystDecision(BaseModel):
+    action: Action
+    confidence: float = Field(ge=0, le=1)
+    target_weight: float = Field(ge=0, le=1)
+    rationale: str
