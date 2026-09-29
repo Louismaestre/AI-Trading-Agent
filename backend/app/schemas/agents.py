@@ -39,3 +39,16 @@ class QuantityProposal(BaseModel):
 
     quantity: int = Field(ge=0)
     rationale: str
+
+
+class AgentDecisionResponse(BaseModel):
+    id: int
+    ticker: str
+    as_of: datetime.date
+    action: Action
+    confidence: float
+    target_weight: float
+    rationale: str
+    llm_model: str
+    duration_ms: int
+    order_id: int | None

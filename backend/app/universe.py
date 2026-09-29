@@ -27,3 +27,8 @@ UNIVERSE: list[UniverseEntry] = [
     # Benchmark index, not traded by the agents.
     UniverseEntry(ticker="^FCHI", name="CAC 40", isin="FR0003500008", sector="Index"),
 ]
+
+
+def tradable_tickers() -> list[str]:
+    """CAC 40 constituents only; the index itself is not traded."""
+    return [entry.ticker for entry in UNIVERSE if not entry.ticker.startswith("^")]
