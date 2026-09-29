@@ -7,7 +7,14 @@ from app.config import Settings
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ignore any `.env` file or variable already set on the machine."""
-    for var in ("APP_ENV", "LOG_LEVEL", "DATABASE_URL"):
+    for var in (
+        "APP_ENV",
+        "LOG_LEVEL",
+        "DATABASE_URL",
+        "LLM_MODEL",
+        "OLLAMA_BASE_URL",
+        "LLM_TEMPERATURE",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -24,6 +31,9 @@ def test_reads_values_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.database_url == "postgresql+psycopg://u:p@db:5432/x"
     assert settings.app_env == "production"
     assert settings.log_level == "INFO"
+    assert settings.llm_model == "qwen3:8b"
+    assert settings.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.llm_temperature == 0
 
 
 def test_missing_database_url_is_rejected() -> None:

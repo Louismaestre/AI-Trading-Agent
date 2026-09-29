@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     database_url: str
+    llm_model: str = "qwen3:8b"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    llm_temperature: float = 0
 
 
 @lru_cache
