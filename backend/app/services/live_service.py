@@ -4,6 +4,7 @@ import datetime
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.llm import StructuredLLM
@@ -96,6 +97,28 @@ class LiveService:
         self._session.add(point)
         self._session.commit()
         return CycleResult(True, "ok", len(decisions), point.id)
+
+    def mark_at_close(self, session_id: int, close: datetime.datetime) -> EquityPoint | None:
+        """Store the close valuation once per session and close timestamp."""
+        close = ensure_aware(close)
+        live = self._get(session_id)
+        existing = self._session.scalar(
+            select(EquityPoint).where(
+                EquityPoint.session_id == live.id, EquityPoint.recorded_at == close
+            )
+        )
+        if existing is not None:
+            return None
+        snapshot = self._portfolios.snapshot(live.portfolio_id, close)
+        point = EquityPoint(
+            session_id=live.id,
+            recorded_at=close,
+            total_value=snapshot.total_value,
+            cash=snapshot.portfolio.cash,
+        )
+        self._session.add(point)
+        self._session.commit()
+        return point
 
     def _get(self, session_id: int) -> LiveSession:
         row = self._session.get(LiveSession, session_id)

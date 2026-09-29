@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_engine
 from app.routers import agents, health, instruments, market, portfolios
+from app.scheduler import start_scheduler, stop_scheduler
 from app.services.instrument_service import InstrumentService
 
 
@@ -23,7 +24,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with Session(get_engine()) as session:
         instrument_service = InstrumentService(session)
         instrument_service.sync_universe()
+    if get_settings().app_env != "test":
+        start_scheduler()
     yield
+    stop_scheduler()
     get_engine().dispose()
 
 
