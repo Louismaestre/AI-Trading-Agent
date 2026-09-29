@@ -42,6 +42,11 @@ class LiveSessionStatus(StrEnum):
     STOPPED = "STOPPED"
 
 
+class LiveSessionKind(StrEnum):
+    AGENTS = "AGENTS"
+    BUY_AND_HOLD = "BUY_AND_HOLD"
+
+
 class Instrument(TimestampedModel):
     """A tracked stock or index, e.g. `MC.PA` (LVMH) or `^FCHI` (CAC 40)."""
 
@@ -168,9 +173,18 @@ class LiveSession(TimestampedModel):
     )
     started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
     last_slot: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[LiveSessionKind] = mapped_column(
+        Enum(LiveSessionKind, native_enum=False, length=16), default=LiveSessionKind.AGENTS
+    )
+    benchmark_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="SET NULL")
+    )
 
     portfolio: Mapped[Portfolio] = relationship()
     equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="session")
+    benchmark_session: Mapped["LiveSession | None"] = relationship(
+        remote_side="LiveSession.id", foreign_keys=[benchmark_session_id]
+    )
 
 
 class EquityPoint(TimestampedModel):

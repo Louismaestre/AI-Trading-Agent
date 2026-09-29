@@ -3,16 +3,22 @@
 import datetime
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.tools import target_buy_quantity
 from app.llm import StructuredLLM
-from app.market_clock import ensure_aware, is_market_open
-from app.models import EquityPoint, LiveSession, LiveSessionStatus
+from app.market_clock import ensure_aware, is_market_open, last_close
+from app.models import EquityPoint, LiveSession, LiveSessionKind, LiveSessionStatus, OrderSide
 from app.services.agent_service import AgentService
 from app.services.market_data_service import MarketDataService
 from app.services.portfolio_service import PortfolioService
+from app.universe import tradable_tickers
+
+# Leave room for brokerage + FTT so equal-weight buys do not exhaust cash.
+_FEE_BUFFER = Decimal("0.994")
 
 DEFAULT_INTERVAL_MINUTES = 15
 INTRADAY_LOOKBACK = datetime.timedelta(days=2)
@@ -54,18 +60,67 @@ class LiveService:
         self._agents = agents or AgentService(session, llm=llm)
 
     def create(
-        self, portfolio_id: int, interval_minutes: int = DEFAULT_INTERVAL_MINUTES
+        self,
+        portfolio_id: int,
+        interval_minutes: int = DEFAULT_INTERVAL_MINUTES,
+        now: datetime.datetime | None = None,
+        tickers: Sequence[str] | None = None,
     ) -> LiveSession:
-        self._portfolios.get(portfolio_id)
+        """Start an agent session and a buy-and-hold twin with the same capital."""
+        now = ensure_aware(now or datetime.datetime.now(datetime.UTC))
+        source = self._portfolios.get(portfolio_id)
+        benchmark = self._portfolios.create(f"{source.name} (buy and hold)", source.initial_capital)
+        self._open_equal_weight(benchmark.id, now, tickers or tradable_tickers())
+        hold = self._new_session(benchmark.id, interval_minutes, now, LiveSessionKind.BUY_AND_HOLD)
+        agents = self._new_session(
+            portfolio_id, interval_minutes, now, LiveSessionKind.AGENTS, hold.id
+        )
+        self._session.commit()
+        return agents
+
+    def _new_session(
+        self,
+        portfolio_id: int,
+        interval_minutes: int,
+        now: datetime.datetime,
+        kind: LiveSessionKind,
+        benchmark_session_id: int | None = None,
+    ) -> LiveSession:
         row = LiveSession(
             portfolio_id=portfolio_id,
             interval_minutes=interval_minutes,
             status=LiveSessionStatus.RUNNING,
-            started_at=datetime.datetime.now(datetime.UTC),
+            started_at=now,
+            kind=kind,
+            benchmark_session_id=benchmark_session_id,
         )
         self._session.add(row)
-        self._session.commit()
+        self._session.flush()
         return row
+
+    def _open_equal_weight(
+        self, portfolio_id: int, now: datetime.datetime, tickers: Sequence[str]
+    ) -> None:
+        priced = [(ticker, price) for ticker in tickers if (price := self._last_price(ticker, now))]
+        if not priced:
+            return
+        capital = self._portfolios.get(portfolio_id).initial_capital
+        usable = capital * _FEE_BUFFER
+        weight = 1 / len(priced)
+        decision_at = last_close(now)
+        for ticker, price in priced:
+            quantity = target_buy_quantity(usable, price, weight)
+            if quantity < 1:
+                continue
+            self._portfolios.place_order(portfolio_id, ticker, OrderSide.BUY, quantity, decision_at)
+        self._portfolios.execute_pending_orders(portfolio_id, now)
+
+    def _last_price(self, ticker: str, now: datetime.datetime) -> Decimal | None:
+        price = self._market.get_latest_price(ticker, now)
+        if price is not None:
+            return price
+        history = self._market.get_history(ticker, now.date(), limit=1)
+        return history[0].close if history else None
 
     def run_cycle(
         self,
@@ -85,7 +140,9 @@ class LiveService:
 
         self._market.sync_universe_intraday(now - INTRADAY_LOOKBACK)
         self._portfolios.execute_pending_orders(live.portfolio_id, now)
-        decisions = self._agents.run_agents(live.portfolio_id, now, tickers=tickers)
+        decisions = []
+        if live.kind is LiveSessionKind.AGENTS:
+            decisions = self._agents.run_agents(live.portfolio_id, now, tickers=tickers)
         snapshot = self._portfolios.snapshot(live.portfolio_id, now)
         point = EquityPoint(
             session_id=live.id,
