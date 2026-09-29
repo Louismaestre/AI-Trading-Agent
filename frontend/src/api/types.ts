@@ -67,3 +67,18 @@ export type PlaceOrderBody = {
   decision_at?: string
   execute_at?: string
 }
+
+export type AgentAction = 'BUY' | 'SELL' | 'HOLD'
+
+export type AgentDecision = {
+  id: number
+  ticker: string
+  as_of: string
+  action: AgentAction
+  confidence: number
+  target_weight: number
+  rationale: string
+  llm_model: string
+  duration_ms: number
+  order_id: number | null
+}

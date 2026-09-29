@@ -1,9 +1,18 @@
 import { useState } from 'react'
 
-import { useCreatePortfolio, useInstruments, useOrders, usePlaceOrder, usePortfolio } from '../api/client'
+import {
+  useCreatePortfolio,
+  useDecisions,
+  useInstruments,
+  useOrders,
+  usePlaceOrder,
+  usePortfolio,
+  useRunAgents,
+} from '../api/client'
 import { formatEuro, performancePercent } from '../api/money'
 import { readStoredPortfolioId, storePortfolioId } from '../api/portfolioStorage'
 import type { PlaceOrderBody } from '../api/types'
+import { DecisionsTable } from '../components/DecisionsTable'
 import { OrderForm } from '../components/OrderForm'
 import { OrdersTable } from '../components/OrdersTable'
 import { PositionsTable } from '../components/PositionsTable'
@@ -14,8 +23,10 @@ export function PortfolioPage() {
   const portfolio = usePortfolio(portfolioId)
   const lost = Boolean(portfolio.error?.message.startsWith('404'))
   const orders = useOrders(lost ? null : portfolioId)
+  const decisions = useDecisions(lost ? null : portfolioId)
   const instruments = useInstruments()
   const place = usePlaceOrder(portfolioId ?? 0)
+  const runAgents = useRunAgents(portfolioId ?? 0)
 
   async function handleCreate() {
     const created = await create.mutateAsync()
@@ -54,7 +65,18 @@ export function PortfolioPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">{snapshot?.name ?? 'Portfolio'}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold tracking-tight">{snapshot?.name ?? 'Portfolio'}</h1>
+          <button
+            type="button"
+            onClick={() => runAgents.mutate()}
+            disabled={runAgents.isPending}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          >
+            {runAgents.isPending ? 'Running agents…' : 'Run agents'}
+          </button>
+        </div>
+        {runAgents.error ? <p className="mt-2 text-sm text-red-700">{runAgents.error.message}</p> : null}
         {snapshot ? (
           <dl className="mt-4 grid gap-4 sm:grid-cols-3">
             <Stat label="Total value" value={formatEuro(snapshot.total_value)} />
@@ -92,6 +114,17 @@ export function PortfolioPage() {
       <section>
         <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">Orders</h2>
         {orders.data ? <OrdersTable orders={orders.data} /> : <p className="text-sm text-slate-500">Loading…</p>}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+          Agent decisions
+        </h2>
+        {decisions.data ? (
+          <DecisionsTable decisions={decisions.data} />
+        ) : (
+          <p className="text-sm text-slate-500">Loading…</p>
+        )}
       </section>
     </main>
   )

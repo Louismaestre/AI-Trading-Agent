@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
-from app.routers import health, instruments, market, portfolios
+from app.routers import agents, health, instruments, market, portfolios
 from app.services.instrument_service import InstrumentService
 
 
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(instruments.router, prefix="/api/v1")
     app.include_router(market.router, prefix="/api/v1")
     app.include_router(portfolios.router, prefix="/api/v1")
+    app.include_router(agents.router, prefix="/api/v1")
     return app
 
 

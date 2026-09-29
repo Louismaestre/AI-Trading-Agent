@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getJson, postJson } from './http'
-import type { Bar, Health, Instrument, Order, PlaceOrderBody, Portfolio } from './types'
+import type { AgentDecision, Bar, Health, Instrument, Order, PlaceOrderBody, Portfolio } from './types'
 
 export const queryKeys = {
   health: ['health'] as const,
@@ -9,6 +9,7 @@ export const queryKeys = {
   prices: (ticker: string, start: string, end: string) => ['prices', ticker, start, end] as const,
   portfolio: (id: number) => ['portfolio', id] as const,
   orders: (id: number) => ['orders', id] as const,
+  decisions: (id: number) => ['decisions', id] as const,
 }
 
 export function getHealth(): Promise<Health> {
@@ -38,6 +39,15 @@ export function getOrders(id: number): Promise<Order[]> {
 
 export function placeOrder(portfolioId: number, body: PlaceOrderBody): Promise<Order> {
   return postJson(`/api/v1/portfolios/${portfolioId}/orders`, body)
+}
+
+export function getDecisions(id: number): Promise<AgentDecision[]> {
+  return getJson(`/api/v1/portfolios/${id}/decisions`)
+}
+
+export function runAgents(id: number, asOf?: string): Promise<AgentDecision[]> {
+  const params = asOf ? `?as_of=${asOf}` : ''
+  return postJson(`/api/v1/portfolios/${id}/run-agents${params}`, {})
 }
 
 export function useHealth() {
@@ -81,6 +91,26 @@ export function usePlaceOrder(portfolioId: number) {
   return useMutation({
     mutationFn: (body: PlaceOrderBody) => placeOrder(portfolioId, body),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.portfolio(portfolioId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders(portfolioId) })
+    },
+  })
+}
+
+export function useDecisions(id: number | null) {
+  return useQuery({
+    queryKey: queryKeys.decisions(id ?? 0),
+    queryFn: () => getDecisions(id as number),
+    enabled: id !== null,
+  })
+}
+
+export function useRunAgents(portfolioId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (asOf?: string) => runAgents(portfolioId, asOf),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.decisions(portfolioId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.portfolio(portfolioId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.orders(portfolioId) })
     },

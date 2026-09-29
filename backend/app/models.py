@@ -30,6 +30,12 @@ class OrderStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class AgentAction(StrEnum):
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+
+
 class Instrument(TimestampedModel):
     """A tracked stock or index, e.g. `MC.PA` (LVMH) or `^FCHI` (CAC 40)."""
 
@@ -84,6 +90,7 @@ class Portfolio(TimestampedModel):
 
     positions: Mapped[list["Position"]] = relationship(back_populates="portfolio")
     orders: Mapped[list["Order"]] = relationship(back_populates="portfolio")
+    decisions: Mapped[list["AgentDecision"]] = relationship(back_populates="portfolio")
 
 
 class Position(TimestampedModel):
@@ -119,3 +126,25 @@ class Order(TimestampedModel):
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="orders")
     instrument: Mapped[Instrument] = relationship()
+    decision: Mapped["AgentDecision | None"] = relationship(back_populates="order", uselist=False)
+
+
+class AgentDecision(TimestampedModel):
+    """One analyst decision for a ticker, optionally linked to the order it produced."""
+
+    __tablename__ = "agent_decisions"
+
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="RESTRICT"))
+    as_of: Mapped[datetime.date] = mapped_column()
+    action: Mapped[AgentAction] = mapped_column(Enum(AgentAction, native_enum=False, length=8))
+    confidence: Mapped[float] = mapped_column()
+    target_weight: Mapped[float] = mapped_column()
+    rationale: Mapped[str] = mapped_column(String(2000))
+    llm_model: Mapped[str] = mapped_column(String(100))
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"))
+
+    portfolio: Mapped[Portfolio] = relationship(back_populates="decisions")
+    instrument: Mapped[Instrument] = relationship()
+    order: Mapped[Order | None] = relationship(back_populates="decision")
