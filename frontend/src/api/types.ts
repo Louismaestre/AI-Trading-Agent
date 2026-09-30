@@ -70,10 +70,57 @@ export type PlaceOrderBody = {
 
 export type AgentAction = 'BUY' | 'SELL' | 'HOLD'
 
+export type LiveSessionStatus = 'RUNNING' | 'PAUSED' | 'STOPPED'
+export type LiveSessionKind = 'AGENTS' | 'BUY_AND_HOLD'
+
+export type LiveSession = {
+  id: number
+  portfolio_id: number
+  kind: LiveSessionKind
+  status: LiveSessionStatus
+  interval_minutes: number
+  started_at: string
+  last_slot: string | null
+  next_cycle_at: string | null
+  total_value: string
+  cash: string
+  benchmark_session_id: number | null
+}
+
+export type EquityPoint = {
+  id: number
+  recorded_at: string
+  total_value: string
+  cash: string
+}
+
+export type MarketStatus = {
+  now: string
+  is_open: boolean
+  next_open: string
+  last_close: string
+}
+
+export type IntradayBar = {
+  timestamp: string
+  open: string
+  high: string
+  low: string
+  close: string
+  volume: number
+}
+
+export type StartLiveSessionBody = {
+  name?: string
+  initial_capital?: string
+  interval_minutes?: number
+}
+
 export type AgentDecision = {
   id: number
   ticker: string
   as_of: string
+  created_at: string
   action: AgentAction
   confidence: number
   target_weight: number

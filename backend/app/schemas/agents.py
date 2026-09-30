@@ -45,6 +45,7 @@ class AgentDecisionResponse(BaseModel):
     id: int
     ticker: str
     as_of: datetime.date
+    created_at: datetime.datetime
     action: Action
     confidence: float
     target_weight: float

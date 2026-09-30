@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { getInstruments, getPrices, placeOrder } from './client'
+import { startLiveSession } from './live'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -47,6 +48,20 @@ test('placeOrder posts the JSON body', async () => {
     expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ ticker: 'MC.PA', side: 'BUY', quantity: 10 }),
+    }),
+  )
+})
+
+test('startLiveSession posts capital and interval', async () => {
+  const fetchMock = stubFetch({ id: 7, status: 'RUNNING' })
+
+  await startLiveSession({ name: 'demo', initial_capital: '50000', interval_minutes: 15 })
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/v1/live-sessions',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ name: 'demo', initial_capital: '50000', interval_minutes: 15 }),
     }),
   )
 })

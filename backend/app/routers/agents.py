@@ -50,6 +50,7 @@ def decision_response(record: AgentDecision) -> AgentDecisionResponse:
         id=record.id,
         ticker=record.instrument.ticker,
         as_of=record.as_of,
+        created_at=record.created_at,
         action=record.action.value,
         confidence=record.confidence,
         target_weight=record.target_weight,

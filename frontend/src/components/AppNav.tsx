@@ -4,6 +4,7 @@ const links = [
   { to: '/', label: 'Health' },
   { to: '/market', label: 'Market' },
   { to: '/portfolio', label: 'Portfolio' },
+  { to: '/live', label: 'Live' },
 ]
 
 export function AppNav() {

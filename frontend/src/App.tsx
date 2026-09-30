@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
 import { AppNav } from './components/AppNav'
 import { HomePage } from './pages/HomePage'
+import { LivePage } from './pages/LivePage'
 import { MarketPage } from './pages/MarketPage'
 import { PortfolioPage } from './pages/PortfolioPage'
 
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/market" element={<MarketPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
+          <Route path="/live" element={<LivePage />} />
         </Routes>
       </div>
     </BrowserRouter>
