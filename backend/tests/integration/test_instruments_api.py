@@ -1,5 +1,6 @@
 import datetime
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,7 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.main import create_app
-from app.routers.instruments import get_market_data_service
+from app.routers.instruments import get_fundamentals_service, get_market_data_service
+from app.schemas.fundamentals import FundamentalPeriod
+from app.services.fundamentals_service import FundamentalsService
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService
 from app.universe import UNIVERSE
@@ -28,6 +31,13 @@ def client(db_session: Session) -> Iterator[TestClient]:
         db_session,
         fetch_bars=FakeProvider(),
         fetch_intraday=FakeIntradayProvider(first=TEN, count=3),
+    )
+    app.dependency_overrides[get_fundamentals_service] = lambda: FundamentalsService(
+        db_session,
+        fetch=lambda _ticker: [
+            FundamentalPeriod(period_end=datetime.date(2026, 6, 30), revenue=Decimal("1000"))
+        ],
+        delay_days=60,
     )
     # No `with`: the startup sync would use the real database instead of the test one.
     yield TestClient(app)
@@ -95,5 +105,24 @@ def test_intraday_without_timezone_is_422(client: TestClient) -> None:
 
 def test_intraday_of_unknown_ticker_is_404(client: TestClient) -> None:
     response = client.get("/api/v1/instruments/NOPE.PA/intraday", params={"start": TEN.isoformat()})
+
+    assert response.status_code == 404
+
+
+def test_sync_then_read_fundamentals_respects_the_publication_delay(client: TestClient) -> None:
+    sync = client.post("/api/v1/instruments/sync-fundamentals")
+    july = client.get("/api/v1/instruments/MC.PA/fundamentals", params={"as_of": "2026-07-15"})
+    september = client.get("/api/v1/instruments/MC.PA/fundamentals", params={"as_of": "2026-09-01"})
+
+    assert sync.status_code == 200
+    assert sync.json()["periods_stored"] > 0
+    assert july.json()["statements"] == []
+    assert september.json()["statements"][0]["period_end"] == "2026-06-30"
+
+
+def test_fundamentals_of_unknown_ticker_is_404(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/instruments/NOPE.PA/fundamentals", params={"as_of": "2026-07-15"}
+    )
 
     assert response.status_code == 404

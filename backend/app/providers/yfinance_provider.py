@@ -1,6 +1,7 @@
-"""Downloads market data from Yahoo Finance. The only module that knows about yfinance.
+"""Downloads market data from Yahoo Finance.
 
-Euronext quotes from Yahoo are delayed by about 15 minutes.
+Euronext quotes from Yahoo are delayed by about 15 minutes. Fundamentals live in
+`fundamentals_provider` (same source, different tables).
 """
 
 import datetime

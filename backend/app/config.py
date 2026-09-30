@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     llm_temperature: float = 0
     # Replays must start after this date so the model cannot "remember" later prices.
     llm_knowledge_cutoff: datetime.date = datetime.date(2025, 4, 1)
+    # A quarter is unknown until this many days after period_end (yfinance has no filing date).
+    fundamentals_publication_delay_days: int = 60
 
 
 @lru_cache

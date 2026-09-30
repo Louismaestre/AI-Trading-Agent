@@ -227,6 +227,26 @@ class Replay(TimestampedModel):
     )
 
 
+class Fundamental(TimestampedModel):
+    """One quarterly filing. Visible in replay only after period_end + publication delay."""
+
+    __tablename__ = "fundamentals"
+    __table_args__ = (UniqueConstraint("instrument_id", "period_end"),)
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    period_end: Mapped[datetime.date] = mapped_column()
+    revenue: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    gross_profit: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    operating_income: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    net_income: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    diluted_eps: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    total_debt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    total_equity: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    operating_cash_flow: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+
+    instrument: Mapped[Instrument] = relationship()
+
+
 class EquityPoint(TimestampedModel):
     """Portfolio mark-to-market taken at a live cycle or a replay close."""
 
