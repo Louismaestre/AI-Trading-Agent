@@ -14,6 +14,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LLM_MODEL",
         "OLLAMA_BASE_URL",
         "LLM_TEMPERATURE",
+        "LLM_KNOWLEDGE_CUTOFF",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -34,6 +35,7 @@ def test_reads_values_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.llm_model == "qwen3:8b"
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
     assert settings.llm_temperature == 0
+    assert settings.llm_knowledge_cutoff.isoformat() == "2025-04-01"
 
 
 def test_missing_database_url_is_rejected() -> None:

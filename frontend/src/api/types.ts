@@ -116,6 +116,38 @@ export type StartLiveSessionBody = {
   interval_minutes?: number
 }
 
+export type ReplayStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
+export type ReplayKind = 'AGENTS' | 'BUY_AND_HOLD'
+
+export type ReplayMetrics = {
+  total_return: string
+  max_drawdown: string
+  order_count: number
+  fees_paid: string
+  hit_rate: string | null
+}
+
+export type Replay = {
+  id: number
+  portfolio_id: number
+  kind: ReplayKind
+  status: ReplayStatus
+  start_date: string
+  end_date: string
+  days_done: number
+  days_total: number
+  current_date: string | null
+  benchmark_replay_id: number | null
+  metrics: ReplayMetrics | null
+}
+
+export type StartReplayBody = {
+  name?: string
+  initial_capital?: string
+  start: string
+  end: string
+}
+
 export type AgentDecision = {
   id: number
   ticker: string

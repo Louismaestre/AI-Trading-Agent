@@ -1,5 +1,6 @@
 """Application settings, loaded from environment variables and the root `.env` file."""
 
+import datetime
 from functools import lru_cache
 from typing import Literal
 
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     llm_model: str = "qwen3:8b"
     ollama_base_url: str = "http://127.0.0.1:11434"
     llm_temperature: float = 0
+    # Replays must start after this date so the model cannot "remember" later prices.
+    llm_knowledge_cutoff: datetime.date = datetime.date(2025, 4, 1)
 
 
 @lru_cache
