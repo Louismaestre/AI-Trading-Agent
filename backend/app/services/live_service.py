@@ -11,10 +11,17 @@ from sqlalchemy.orm import Session
 from app.agents.tools import target_buy_quantity
 from app.llm import StructuredLLM
 from app.market_clock import ensure_aware, is_market_open, last_close
-from app.models import EquityPoint, LiveSession, LiveSessionKind, LiveSessionStatus, OrderSide
+from app.models import (
+    AgentDecision,
+    EquityPoint,
+    LiveSession,
+    LiveSessionKind,
+    LiveSessionStatus,
+    OrderSide,
+)
 from app.services.agent_service import AgentService
 from app.services.market_data_service import MarketDataService
-from app.services.portfolio_service import PortfolioService
+from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService, PortfolioView
 from app.universe import tradable_tickers
 
 # Leave room for brokerage + FTT so equal-weight buys do not exhaust cash.
@@ -26,6 +33,15 @@ INTRADAY_LOOKBACK = datetime.timedelta(days=2)
 
 class UnknownLiveSessionError(LookupError):
     """No live session exists for this id."""
+
+
+class InvalidLiveSessionStateError(ValueError):
+    """The requested status change is not allowed from the current status."""
+
+    def __init__(self, current: LiveSessionStatus, target: LiveSessionStatus) -> None:
+        super().__init__(f"Cannot move a {current.value} session to {target.value}")
+        self.current = current
+        self.target = target
 
 
 @dataclass(frozen=True)
@@ -58,6 +74,18 @@ class LiveService:
         self._portfolios = PortfolioService(session)
         self._market = market or MarketDataService(session)
         self._agents = agents or AgentService(session, llm=llm)
+
+    def start(
+        self,
+        name: str = "Live",
+        initial_capital: Decimal = DEFAULT_CAPITAL,
+        interval_minutes: int = DEFAULT_INTERVAL_MINUTES,
+        now: datetime.datetime | None = None,
+        tickers: Sequence[str] | None = None,
+    ) -> LiveSession:
+        """Create a portfolio and open the agent session plus its buy-and-hold twin."""
+        portfolio = self._portfolios.create(name, initial_capital)
+        return self.create(portfolio.id, interval_minutes, now, tickers)
 
     def create(
         self,
@@ -176,6 +204,55 @@ class LiveService:
         self._session.add(point)
         self._session.commit()
         return point
+
+    def get(self, session_id: int) -> LiveSession:
+        return self._get(session_id)
+
+    def portfolio_snapshot(self, portfolio_id: int, now: datetime.datetime) -> PortfolioView:
+        return self._portfolios.snapshot(portfolio_id, now)
+
+    def pause(self, session_id: int) -> LiveSession:
+        return self._transition(session_id, {LiveSessionStatus.RUNNING}, LiveSessionStatus.PAUSED)
+
+    def resume(self, session_id: int) -> LiveSession:
+        return self._transition(session_id, {LiveSessionStatus.PAUSED}, LiveSessionStatus.RUNNING)
+
+    def stop(self, session_id: int) -> LiveSession:
+        return self._transition(
+            session_id,
+            {LiveSessionStatus.RUNNING, LiveSessionStatus.PAUSED},
+            LiveSessionStatus.STOPPED,
+        )
+
+    def list_equity(self, session_id: int) -> list[EquityPoint]:
+        live = self._get(session_id)
+        statement = (
+            select(EquityPoint)
+            .where(EquityPoint.session_id == live.id)
+            .order_by(EquityPoint.recorded_at.asc(), EquityPoint.id.asc())
+        )
+        return list(self._session.scalars(statement))
+
+    def list_decisions(self, session_id: int) -> list[AgentDecision]:
+        live = self._get(session_id)
+        return self._agents.list_decisions(live.portfolio_id)
+
+    def _transition(
+        self,
+        session_id: int,
+        allowed: set[LiveSessionStatus],
+        target: LiveSessionStatus,
+    ) -> LiveSession:
+        live = self._get(session_id)
+        if live.status not in allowed:
+            raise InvalidLiveSessionStateError(live.status, target)
+        live.status = target
+        if live.benchmark_session_id is not None:
+            twin = self._session.get(LiveSession, live.benchmark_session_id)
+            if twin is not None:
+                twin.status = target
+        self._session.commit()
+        return live
 
     def _get(self, session_id: int) -> LiveSession:
         row = self._session.get(LiveSession, session_id)

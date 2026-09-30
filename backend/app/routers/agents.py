@@ -31,7 +31,7 @@ def run_agents(
         records = service.run_agents(portfolio_id, as_of or datetime.date.today())
     except UnknownPortfolioError:
         raise _unknown_portfolio(portfolio_id) from None
-    return [_decision_response(record) for record in records]
+    return [decision_response(record) for record in records]
 
 
 @router.get("/{portfolio_id}/decisions", response_model=list[AgentDecisionResponse])
@@ -40,12 +40,12 @@ def list_decisions(
     service: Annotated[AgentService, Depends(get_agent_service)],
 ) -> list[AgentDecisionResponse]:
     try:
-        return [_decision_response(record) for record in service.list_decisions(portfolio_id)]
+        return [decision_response(record) for record in service.list_decisions(portfolio_id)]
     except UnknownPortfolioError:
         raise _unknown_portfolio(portfolio_id) from None
 
 
-def _decision_response(record: AgentDecision) -> AgentDecisionResponse:
+def decision_response(record: AgentDecision) -> AgentDecisionResponse:
     return AgentDecisionResponse(
         id=record.id,
         ticker=record.instrument.ticker,
