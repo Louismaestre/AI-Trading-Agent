@@ -98,7 +98,7 @@ class LiveService:
         now = ensure_aware(now or datetime.datetime.now(datetime.UTC))
         source = self._portfolios.get(portfolio_id)
         benchmark = self._portfolios.create(f"{source.name} (buy and hold)", source.initial_capital)
-        self._open_equal_weight(benchmark.id, now, tickers or tradable_tickers())
+        self.open_equal_weight(benchmark.id, now, tickers or tradable_tickers())
         hold = self._new_session(benchmark.id, interval_minutes, now, LiveSessionKind.BUY_AND_HOLD)
         agents = self._new_session(
             portfolio_id, interval_minutes, now, LiveSessionKind.AGENTS, hold.id
@@ -126,7 +126,7 @@ class LiveService:
         self._session.flush()
         return row
 
-    def _open_equal_weight(
+    def open_equal_weight(
         self, portfolio_id: int, now: datetime.datetime, tickers: Sequence[str]
     ) -> None:
         priced = [(ticker, price) for ticker in tickers if (price := self._last_price(ticker, now))]

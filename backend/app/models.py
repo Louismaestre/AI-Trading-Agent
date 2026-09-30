@@ -55,6 +55,11 @@ class ReplayStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class ReplayKind(StrEnum):
+    AGENTS = "AGENTS"
+    BUY_AND_HOLD = "BUY_AND_HOLD"
+
+
 class Instrument(TimestampedModel):
     """A tracked stock or index, e.g. `MC.PA` (LVMH) or `^FCHI` (CAC 40)."""
 
@@ -208,9 +213,18 @@ class Replay(TimestampedModel):
     days_done: Mapped[int] = mapped_column(Integer, default=0)
     days_total: Mapped[int] = mapped_column(Integer, default=0)
     current_date: Mapped[datetime.date | None] = mapped_column()
+    kind: Mapped[ReplayKind] = mapped_column(
+        Enum(ReplayKind, native_enum=False, length=16), default=ReplayKind.AGENTS
+    )
+    benchmark_replay_id: Mapped[int | None] = mapped_column(
+        ForeignKey("replays.id", ondelete="SET NULL")
+    )
 
     portfolio: Mapped[Portfolio] = relationship()
     equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="replay")
+    benchmark_replay: Mapped["Replay | None"] = relationship(
+        remote_side="Replay.id", foreign_keys=[benchmark_replay_id]
+    )
 
 
 class EquityPoint(TimestampedModel):

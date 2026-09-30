@@ -2,13 +2,23 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agents.tools import AgentTools
 from app.llm import FakeLLM
 from app.market_clock import session_open
-from app.models import DailyPrice, Instrument, Order, OrderSide, OrderStatus, ReplayStatus
+from app.models import (
+    DailyPrice,
+    Instrument,
+    Order,
+    OrderSide,
+    OrderStatus,
+    Position,
+    Replay,
+    ReplayKind,
+    ReplayStatus,
+)
 from app.schemas.agents import AnalystDecision, QuantityProposal
 from app.services.agent_service import AgentService
 from app.services.fees import compute_fees, money
@@ -108,3 +118,63 @@ def test_as_of_hides_prices_after_the_simulated_day(db_session: Session) -> None
 
     assert tools.get_last_price("MC.PA") == Decimal("100.0000")
     assert [bar.date for bar in history] == [START]
+
+
+def test_create_opens_an_equal_weight_buy_and_hold_book(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([]))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("500"))
+    _seed_daily(db_session, "OR.PA", datetime.date(2026, 9, 14), Decimal("500"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("500"))
+    _seed_daily(db_session, "OR.PA", START, Decimal("500"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA", "OR.PA"])
+
+    assert replay.kind is ReplayKind.AGENTS
+    assert replay.benchmark_replay_id is not None
+    hold = db_session.get(Replay, replay.benchmark_replay_id)
+    assert hold is not None
+    assert hold.kind is ReplayKind.BUY_AND_HOLD
+    held = list(
+        db_session.scalars(select(Position).where(Position.portfolio_id == hold.portfolio_id))
+    )
+    assert {row.quantity for row in held} == {99}
+    assert len(held) == 2
+    agent_positions = list(
+        db_session.scalars(select(Position).where(Position.portfolio_id == portfolio.id))
+    )
+    assert agent_positions == []
+
+
+def test_buy_and_hold_replay_places_no_further_orders(db_session: Session) -> None:
+    service = _service(
+        db_session,
+        FakeLLM(
+            [AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")]
+        ),
+    )
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("500"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("500"))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 16), Decimal("500"))
+    _seed_daily(db_session, "MC.PA", END, Decimal("500"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA"])
+    assert replay.benchmark_replay_id is not None
+    hold = db_session.get(Replay, replay.benchmark_replay_id)
+    assert hold is not None
+    before = db_session.scalar(
+        select(func.count(Order.id)).where(Order.portfolio_id == hold.portfolio_id)
+    )
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    after = db_session.scalar(
+        select(func.count(Order.id)).where(Order.portfolio_id == hold.portfolio_id)
+    )
+    assert after == before
+    assert after == 1
+    scored = service.metrics(replay.id)
+    assert scored.order_count == 0
+    hold_metrics = service.metrics(hold.id)
+    assert hold_metrics.order_count == 1
+    assert hold_metrics.hit_rate is None
+    assert hold_metrics.fees_paid > 0
