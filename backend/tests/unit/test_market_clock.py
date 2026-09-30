@@ -3,7 +3,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.market_clock import is_market_open, last_close, next_open, session_open
+from app.market_clock import (
+    is_market_open,
+    last_close,
+    next_open,
+    session_close,
+    session_open,
+    trading_days,
+)
 
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -57,3 +64,13 @@ def test_session_open_on_a_trading_day() -> None:
 
 def test_session_open_on_a_holiday_is_missing() -> None:
     assert session_open(datetime.date(2026, 12, 25)) is None
+
+
+def test_session_close_on_a_trading_day() -> None:
+    assert session_close(datetime.date(2026, 10, 5)) == _paris(2026, 10, 5, 17, 30)
+
+
+def test_trading_days_skips_the_weekend() -> None:
+    days = trading_days(datetime.date(2026, 10, 2), datetime.date(2026, 10, 5))
+
+    assert days == [datetime.date(2026, 10, 2), datetime.date(2026, 10, 5)]

@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -45,6 +46,13 @@ class LiveSessionStatus(StrEnum):
 class LiveSessionKind(StrEnum):
     AGENTS = "AGENTS"
     BUY_AND_HOLD = "BUY_AND_HOLD"
+
+
+class ReplayStatus(StrEnum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    DONE = "DONE"
+    FAILED = "FAILED"
 
 
 class Instrument(TimestampedModel):
@@ -187,14 +195,42 @@ class LiveSession(TimestampedModel):
     )
 
 
+class Replay(TimestampedModel):
+    """One historical run of the agents on a portfolio, one decision per week."""
+
+    __tablename__ = "replays"
+
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    start_date: Mapped[datetime.date] = mapped_column()
+    end_date: Mapped[datetime.date] = mapped_column()
+    decision_frequency: Mapped[str] = mapped_column(String(16), default="WEEKLY")
+    status: Mapped[ReplayStatus] = mapped_column(Enum(ReplayStatus, native_enum=False, length=16))
+    days_done: Mapped[int] = mapped_column(Integer, default=0)
+    days_total: Mapped[int] = mapped_column(Integer, default=0)
+    current_date: Mapped[datetime.date | None] = mapped_column()
+
+    portfolio: Mapped[Portfolio] = relationship()
+    equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="replay")
+
+
 class EquityPoint(TimestampedModel):
-    """Portfolio mark-to-market taken at the end of a live cycle."""
+    """Portfolio mark-to-market taken at a live cycle or a replay close."""
 
     __tablename__ = "equity_points"
+    __table_args__ = (
+        CheckConstraint(
+            "(session_id IS NULL) != (replay_id IS NULL)",
+            name="one_owner",
+        ),
+    )
 
-    session_id: Mapped[int] = mapped_column(ForeignKey("live_sessions.id", ondelete="CASCADE"))
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="CASCADE")
+    )
+    replay_id: Mapped[int | None] = mapped_column(ForeignKey("replays.id", ondelete="CASCADE"))
     recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
     total_value: Mapped[Decimal] = mapped_column(Numeric(14, 4))
     cash: Mapped[Decimal] = mapped_column(Numeric(14, 4))
 
-    session: Mapped[LiveSession] = relationship(back_populates="equity_points")
+    session: Mapped[LiveSession | None] = relationship(back_populates="equity_points")
+    replay: Mapped[Replay | None] = relationship(back_populates="equity_points")

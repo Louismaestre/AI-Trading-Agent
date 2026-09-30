@@ -1,0 +1,110 @@
+import datetime
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.agents.tools import AgentTools
+from app.llm import FakeLLM
+from app.market_clock import session_open
+from app.models import DailyPrice, Instrument, Order, OrderSide, OrderStatus, ReplayStatus
+from app.schemas.agents import AnalystDecision, QuantityProposal
+from app.services.agent_service import AgentService
+from app.services.fees import compute_fees, money
+from app.services.instrument_service import InstrumentService
+from app.services.market_data_service import MarketDataService
+from app.services.portfolio_service import PortfolioService
+from app.services.replay_service import ReplayService, ReplayStartsTooEarlyError
+
+START = datetime.date(2026, 9, 15)
+END = datetime.date(2026, 9, 17)
+CUTOFF = datetime.date(2025, 4, 1)
+
+
+def _service(db_session: Session, llm: FakeLLM) -> ReplayService:
+    InstrumentService(db_session).sync_universe()
+    return ReplayService(
+        db_session,
+        agents=AgentService(db_session, llm=llm),
+        knowledge_cutoff=CUTOFF,
+    )
+
+
+def _seed_daily(session: Session, ticker: str, day: datetime.date, price: Decimal) -> None:
+    instrument = session.scalar(select(Instrument).where(Instrument.ticker == ticker))
+    assert instrument is not None
+    session.add(
+        DailyPrice(
+            instrument_id=instrument.id,
+            date=day,
+            open=price,
+            high=price,
+            low=price,
+            close=price,
+            volume=1000,
+        )
+    )
+    session.commit()
+
+
+def test_replay_starting_on_or_before_the_cutoff_is_refused(db_session: Session) -> None:
+    live = _service(db_session, FakeLLM([]))
+    portfolio = PortfolioService(db_session).create("demo")
+
+    with pytest.raises(ReplayStartsTooEarlyError):
+        live.create(portfolio.id, CUTOFF, END)
+
+
+def test_replay_curve_after_a_first_day_buy_is_hand_computable(db_session: Session) -> None:
+    llm = FakeLLM(
+        [
+            AnalystDecision(action="BUY", confidence=0.9, target_weight=0.1, rationale="buy"),
+            QuantityProposal(quantity=100, rationale="size"),
+        ]
+    )
+    service = _service(db_session, llm)
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 16), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", END, Decimal("120"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END)
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    points = service.list_equity(replay.id)
+    fill_price = money(Decimal("100") * Decimal("1.0005"))
+    amount = money(Decimal(100) * fill_price)
+    fees = compute_fees(OrderSide.BUY, amount)
+    cash = money(portfolio.initial_capital - amount - fees)
+    assert replay.status is ReplayStatus.DONE
+    assert replay.days_done == 3
+    assert [point.total_value for point in points] == [
+        portfolio.initial_capital,
+        money(cash + Decimal(100) * Decimal("100")),
+        money(cash + Decimal(100) * Decimal("120")),
+    ]
+    order = db_session.scalar(select(Order).where(Order.portfolio_id == portfolio.id))
+    assert order is not None
+    assert order.status is OrderStatus.FILLED
+    assert order.quantity == 100
+
+
+def test_as_of_hides_prices_after_the_simulated_day(db_session: Session) -> None:
+    _service(db_session, FakeLLM([]))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 16), Decimal("999"))
+    opened = session_open(START)
+    assert opened is not None
+    tools = AgentTools(
+        PortfolioService(db_session),
+        MarketDataService(db_session),
+        PortfolioService(db_session).create("demo").id,
+        opened,
+    )
+
+    history = MarketDataService(db_session).get_history("MC.PA", START, limit=10)
+
+    assert tools.get_last_price("MC.PA") == Decimal("100.0000")
+    assert [bar.date for bar in history] == [START]

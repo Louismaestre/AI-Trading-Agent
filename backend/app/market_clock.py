@@ -40,6 +40,21 @@ def session_open(day: datetime.date) -> datetime.datetime | None:
     return _to_datetime(calendar.session_open(session))
 
 
+def session_close(day: datetime.date) -> datetime.datetime | None:
+    """Closing bell of `day` in UTC, or None if the exchange is closed that day."""
+    calendar = _calendar()
+    session = pd.Timestamp(day)
+    if not calendar.is_session(session):
+        return None
+    return _to_datetime(calendar.session_close(session))
+
+
+def trading_days(start: datetime.date, end: datetime.date) -> list[datetime.date]:
+    """Euronext sessions from `start` to `end`, both included."""
+    sessions = _calendar().sessions_in_range(pd.Timestamp(start), pd.Timestamp(end))
+    return [timestamp.date() for timestamp in sessions]
+
+
 def ensure_aware(moment: datetime.datetime) -> datetime.datetime:
     """Reject naive datetimes: without a timezone, "10:00" is ambiguous."""
     if moment.tzinfo is None:
