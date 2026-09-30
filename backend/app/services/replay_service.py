@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.llm import StructuredLLM
 from app.market_clock import session_close, session_open, trading_days
-from app.models import EquityPoint, Replay, ReplayKind, ReplayStatus
+from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
 from app.services.agent_service import AgentService
 from app.services.fees import money
 from app.services.live_service import LiveService
@@ -22,7 +22,7 @@ from app.services.metrics import (
     prediction_correct,
     total_return,
 )
-from app.services.portfolio_service import PortfolioService
+from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService
 from app.universe import tradable_tickers
 
 WEEKLY = "WEEKLY"
@@ -100,6 +100,20 @@ class ReplayService:
         self._session.commit()
         return agents
 
+    def start(
+        self,
+        name: str = "Replay",
+        initial_capital: Decimal = DEFAULT_CAPITAL,
+        start: datetime.date | None = None,
+        end: datetime.date | None = None,
+        tickers: Sequence[str] | None = None,
+    ) -> Replay:
+        """Create a portfolio and open the agent replay plus its buy-and-hold twin."""
+        if start is None or end is None:
+            raise ValueError("start and end are required")
+        portfolio = self._portfolios.create(name, initial_capital)
+        return self.create(portfolio.id, start, end, tickers=tickers)
+
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
         replay = self.get(replay_id)
         self._run_loop(replay, tickers)
@@ -136,6 +150,10 @@ class ReplayService:
             .order_by(EquityPoint.recorded_at.asc(), EquityPoint.id.asc())
         )
         return list(self._session.scalars(statement))
+
+    def list_decisions(self, replay_id: int) -> list[AgentDecision]:
+        replay = self.get(replay_id)
+        return self._agents.list_decisions(replay.portfolio_id)
 
     def _new_replay(
         self,
