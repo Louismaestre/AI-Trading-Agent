@@ -36,6 +36,17 @@ class AgentAction(StrEnum):
     HOLD = "HOLD"
 
 
+class LiveSessionStatus(StrEnum):
+    RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
+    STOPPED = "STOPPED"
+
+
+class LiveSessionKind(StrEnum):
+    AGENTS = "AGENTS"
+    BUY_AND_HOLD = "BUY_AND_HOLD"
+
+
 class Instrument(TimestampedModel):
     """A tracked stock or index, e.g. `MC.PA` (LVMH) or `^FCHI` (CAC 40)."""
 
@@ -148,3 +159,42 @@ class AgentDecision(TimestampedModel):
     portfolio: Mapped[Portfolio] = relationship(back_populates="decisions")
     instrument: Mapped[Instrument] = relationship()
     order: Mapped[Order | None] = relationship(back_populates="decision")
+
+
+class LiveSession(TimestampedModel):
+    """One live run of the agents on a portfolio, during market hours."""
+
+    __tablename__ = "live_sessions"
+
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolios.id", ondelete="CASCADE"))
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    status: Mapped[LiveSessionStatus] = mapped_column(
+        Enum(LiveSessionStatus, native_enum=False, length=16)
+    )
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    last_slot: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[LiveSessionKind] = mapped_column(
+        Enum(LiveSessionKind, native_enum=False, length=16), default=LiveSessionKind.AGENTS
+    )
+    benchmark_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("live_sessions.id", ondelete="SET NULL")
+    )
+
+    portfolio: Mapped[Portfolio] = relationship()
+    equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="session")
+    benchmark_session: Mapped["LiveSession | None"] = relationship(
+        remote_side="LiveSession.id", foreign_keys=[benchmark_session_id]
+    )
+
+
+class EquityPoint(TimestampedModel):
+    """Portfolio mark-to-market taken at the end of a live cycle."""
+
+    __tablename__ = "equity_points"
+
+    session_id: Mapped[int] = mapped_column(ForeignKey("live_sessions.id", ondelete="CASCADE"))
+    recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    total_value: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+    cash: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+
+    session: Mapped[LiveSession] = relationship(back_populates="equity_points")

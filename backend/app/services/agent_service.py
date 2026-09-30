@@ -13,7 +13,7 @@ from app.agents.tools import AgentTools
 from app.config import get_settings
 from app.indicators import technical_summary
 from app.llm import OllamaLLM, StructuredLLM
-from app.market_clock import session_open
+from app.market_clock import ensure_aware, session_open
 from app.models import AgentAction, AgentDecision, Instrument
 from app.services.market_data_service import MarketDataService, UnknownTickerError
 from app.services.portfolio_service import PortfolioService
@@ -32,17 +32,22 @@ class AgentService:
     def run_agents(
         self,
         portfolio_id: int,
-        as_of: datetime.date,
+        as_of: datetime.date | datetime.datetime,
         tickers: Sequence[str] | None = None,
     ) -> list[AgentDecision]:
         """Invoke the graph once per ticker and persist each analyst decision."""
         self._portfolios.get(portfolio_id)
-        moment = _as_of_datetime(as_of)
+        if isinstance(as_of, datetime.datetime):
+            moment = ensure_aware(as_of)
+            day = moment.date()
+        else:
+            moment = _as_of_datetime(as_of)
+            day = as_of
         tools = AgentTools(self._portfolios, self._market, portfolio_id, moment)
         graph = cast(Any, build_graph(self._llm, tools))
         saved: list[AgentDecision] = []
         for ticker in tickers or tradable_tickers():
-            record = self._run_one(graph, tools, portfolio_id, ticker, as_of, moment)
+            record = self._run_one(graph, tools, portfolio_id, ticker, day, moment)
             if record is not None:
                 saved.append(record)
         return saved

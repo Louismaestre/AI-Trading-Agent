@@ -88,6 +88,7 @@ def test_run_agents_api(client: TestClient, db_session: Session, service: AgentS
     body = response.json()
     assert body[0]["ticker"] == "MC.PA"
     assert body[0]["action"] == "HOLD"
+    assert body[0]["created_at"]
     listed = client.get(f"/api/v1/portfolios/{portfolio_id}/decisions")
     assert listed.status_code == 200
     assert listed.json()[0]["rationale"] == "wait"

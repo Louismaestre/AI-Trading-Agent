@@ -8,6 +8,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
+    "apscheduler>=3.11.3",
     "exchange-calendars>=4.13.2",
     "fastapi>=0.141.1",
     "langchain-ollama>=1.1.0",
@@ -54,7 +55,7 @@ plugins = ["pydantic.mypy"]
 files = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["yfinance", "exchange_calendars"]
+module = ["yfinance", "exchange_calendars", "apscheduler.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
