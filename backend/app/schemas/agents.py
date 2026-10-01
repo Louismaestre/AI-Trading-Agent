@@ -34,6 +34,17 @@ class AnalystDecision(BaseModel):
     rationale: str
 
 
+Stance = Literal["BULLISH", "BEARISH", "NEUTRAL"]
+
+
+class AnalystReport(BaseModel):
+    """Opinion from a specialist analyst. It does not place an order."""
+
+    stance: Stance
+    confidence: float = Field(ge=0, le=1)
+    rationale: str
+
+
 class QuantityProposal(BaseModel):
     """How many shares the buyer or seller wants to trade now."""
 

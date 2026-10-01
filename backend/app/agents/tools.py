@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.models import Order, OrderSide
+from app.schemas.fundamentals import FundamentalSnapshot
+from app.services.fundamentals_service import FundamentalsService
 from app.services.market_data_service import MarketDataService
 from app.services.portfolio_service import PortfolioService, PositionView
 
@@ -46,6 +48,7 @@ class AgentTools:
     market: MarketDataService
     portfolio_id: int
     as_of: datetime.datetime
+    fundamentals: FundamentalsService | None = None
 
     def get_last_price(self, ticker: str) -> Decimal | None:
         price = self.market.get_latest_price(ticker, self.as_of)
@@ -59,6 +62,12 @@ class AgentTools:
 
     def get_total_value(self) -> Decimal:
         return self.portfolios.snapshot(self.portfolio_id, self.as_of).total_value
+
+    def get_fundamentals(self, ticker: str) -> FundamentalSnapshot | None:
+        """Filings already public at `as_of`. None if no fundamentals service is bound."""
+        if self.fundamentals is None:
+            return None
+        return self.fundamentals.get_snapshot(ticker, self.as_of.date())
 
     def get_position(self, ticker: str) -> PositionView | None:
         snapshot = self.portfolios.snapshot(self.portfolio_id, self.as_of)

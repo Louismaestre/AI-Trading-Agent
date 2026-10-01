@@ -5,11 +5,14 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.agents.tools import AgentTools
+from app.market_clock import session_open
 from app.models import DailyPrice, Fundamental, Instrument
 from app.schemas.fundamentals import FundamentalPeriod
 from app.services.fundamentals_service import FundamentalsService
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
+from app.services.portfolio_service import PortfolioService
 
 JUNE = datetime.date(2026, 6, 30)
 JULY_15 = datetime.date(2026, 7, 15)
@@ -133,3 +136,24 @@ def test_market_history_is_reused(db_session: Session) -> None:
     snapshot = live.get_snapshot("MC.PA", JULY_15)
 
     assert snapshot.price == Decimal("42.0000")
+
+
+def test_agent_tools_hide_filings_still_inside_the_delay(db_session: Session) -> None:
+    InstrumentService(db_session).sync_universe()
+    live = FundamentalsService(db_session, fetch=_Fetch([_period(JUNE)]), delay_days=DELAY)
+    live.sync("MC.PA")
+    opened = session_open(JULY_15)
+    assert opened is not None
+    tools = AgentTools(
+        PortfolioService(db_session),
+        MarketDataService(db_session),
+        PortfolioService(db_session).create("demo").id,
+        opened,
+        live,
+    )
+
+    snapshot = tools.get_fundamentals("MC.PA")
+
+    assert snapshot is not None
+    assert snapshot.as_of == JULY_15
+    assert snapshot.statements == []
