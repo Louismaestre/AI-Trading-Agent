@@ -12,6 +12,7 @@ from app.database import get_engine
 from app.market_clock import ensure_aware, is_market_open, last_close, next_open
 from app.models import LiveSession, LiveSessionStatus
 from app.services.live_service import LiveService, cycle_slot
+from app.services.news_service import NewsService
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,16 @@ def tick_close_marks(now: datetime.datetime | None = None) -> None:
             logger.exception("Live session %s close mark failed", session_id)
 
 
+def tick_news() -> None:
+    """Pull recent headlines so the sentiment window is not empty on the next cycle."""
+    try:
+        with Session(get_engine()) as session:
+            stored = NewsService(session).sync_universe()
+            logger.info("News sync stored %s articles", stored)
+    except Exception:
+        logger.exception("News sync failed")
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -98,6 +109,7 @@ def start_scheduler() -> None:
         tick_running_sessions, "interval", minutes=1, id="live-cycles", max_instances=1
     )
     _scheduler.add_job(tick_close_marks, "interval", minutes=5, id="close-marks", max_instances=1)
+    _scheduler.add_job(tick_news, "interval", hours=6, id="news-sync", max_instances=1)
     _scheduler.start()
     logger.info("Live scheduler started")
 

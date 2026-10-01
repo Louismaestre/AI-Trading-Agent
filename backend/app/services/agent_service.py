@@ -17,6 +17,7 @@ from app.market_clock import ensure_aware, session_open
 from app.models import AgentAction, AgentDecision, Instrument
 from app.services.fundamentals_service import FundamentalsService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
+from app.services.news_service import NewsService
 from app.services.portfolio_service import PortfolioService
 from app.universe import tradable_tickers
 
@@ -29,6 +30,7 @@ class AgentService:
         self._portfolios = PortfolioService(session)
         self._market = MarketDataService(session)
         self._fundamentals = FundamentalsService(session)
+        self._news = NewsService(session)
         self._llm = llm or OllamaLLM()
 
     def run_agents(
@@ -45,7 +47,14 @@ class AgentService:
         else:
             moment = _as_of_datetime(as_of)
             day = as_of
-        tools = AgentTools(self._portfolios, self._market, portfolio_id, moment, self._fundamentals)
+        tools = AgentTools(
+            self._portfolios,
+            self._market,
+            portfolio_id,
+            moment,
+            self._fundamentals,
+            self._news,
+        )
         graph = cast(Any, build_graph(self._llm, tools))
         saved: list[AgentDecision] = []
         for ticker in tickers or tradable_tickers():

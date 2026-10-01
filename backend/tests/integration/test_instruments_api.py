@@ -8,11 +8,17 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.main import create_app
-from app.routers.instruments import get_fundamentals_service, get_market_data_service
+from app.routers.instruments import (
+    get_fundamentals_service,
+    get_market_data_service,
+    get_news_service,
+)
 from app.schemas.fundamentals import FundamentalPeriod
+from app.schemas.news import NewsItem
 from app.services.fundamentals_service import FundamentalsService
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService
+from app.services.news_service import NewsService
 from app.universe import UNIVERSE
 from tests.fakes import FakeIntradayProvider, FakeProvider
 
@@ -38,6 +44,23 @@ def client(db_session: Session) -> Iterator[TestClient]:
             FundamentalPeriod(period_end=datetime.date(2026, 6, 30), revenue=Decimal("1000"))
         ],
         delay_days=60,
+    )
+    app.dependency_overrides[get_news_service] = lambda: NewsService(
+        db_session,
+        fetch=lambda _ticker: [
+            NewsItem(
+                published_at=datetime.datetime(2026, 7, 15, 8, 0, tzinfo=datetime.UTC),
+                source="Les Echos",
+                title="LVMH beats forecasts",
+                url="https://example.com/lvmh",
+            ),
+            NewsItem(
+                published_at=datetime.datetime(2026, 7, 16, 8, 0, tzinfo=datetime.UTC),
+                source="Les Echos",
+                title="Later story",
+                url="https://example.com/later",
+            ),
+        ],
     )
     # No `with`: the startup sync would use the real database instead of the test one.
     yield TestClient(app)
@@ -124,5 +147,22 @@ def test_fundamentals_of_unknown_ticker_is_404(client: TestClient) -> None:
     response = client.get(
         "/api/v1/instruments/NOPE.PA/fundamentals", params={"as_of": "2026-07-15"}
     )
+
+    assert response.status_code == 404
+
+
+def test_sync_then_read_news_hides_articles_after_as_of(client: TestClient) -> None:
+    sync = client.post("/api/v1/instruments/sync-news")
+    july = client.get("/api/v1/instruments/MC.PA/news", params={"as_of": "2026-07-15"})
+    later = client.get("/api/v1/instruments/MC.PA/news", params={"as_of": "2026-07-16"})
+
+    assert sync.status_code == 200
+    assert sync.json()["articles_stored"] > 0
+    assert [item["title"] for item in july.json()] == ["LVMH beats forecasts"]
+    assert [item["title"] for item in later.json()] == ["Later story", "LVMH beats forecasts"]
+
+
+def test_news_of_unknown_ticker_is_404(client: TestClient) -> None:
+    response = client.get("/api/v1/instruments/NOPE.PA/news", params={"as_of": "2026-07-15"})
 
     assert response.status_code == 404

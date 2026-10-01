@@ -6,8 +6,10 @@ from decimal import Decimal
 
 from app.models import Order, OrderSide
 from app.schemas.fundamentals import FundamentalSnapshot
+from app.schemas.news import NewsItem
 from app.services.fundamentals_service import FundamentalsService
 from app.services.market_data_service import MarketDataService
+from app.services.news_service import NewsService
 from app.services.portfolio_service import PortfolioService, PositionView
 
 
@@ -49,6 +51,7 @@ class AgentTools:
     portfolio_id: int
     as_of: datetime.datetime
     fundamentals: FundamentalsService | None = None
+    news: NewsService | None = None
 
     def get_last_price(self, ticker: str) -> Decimal | None:
         price = self.market.get_latest_price(ticker, self.as_of)
@@ -68,6 +71,12 @@ class AgentTools:
         if self.fundamentals is None:
             return None
         return self.fundamentals.get_snapshot(ticker, self.as_of.date())
+
+    def get_news(self, ticker: str, days: int = 7, limit: int = 15) -> list[NewsItem]:
+        """Headlines already published at `as_of`. Empty if no news service is bound."""
+        if self.news is None:
+            return []
+        return self.news.get_recent(ticker, self.as_of, days=days, limit=limit)
 
     def get_position(self, ticker: str) -> PositionView | None:
         snapshot = self.portfolios.snapshot(self.portfolio_id, self.as_of)

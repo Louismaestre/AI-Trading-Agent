@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -243,6 +244,25 @@ class Fundamental(TimestampedModel):
     total_debt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
     total_equity: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
     operating_cash_flow: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+
+    instrument: Mapped[Instrument] = relationship()
+
+
+class NewsArticle(TimestampedModel):
+    """One headline tied to an instrument. Hidden in replay when published after `as_of`."""
+
+    __tablename__ = "news_articles"
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "url"),
+        Index("ix_news_articles_instrument_id_published_at", "instrument_id", "published_at"),
+    )
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    published_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(500))
+    summary: Mapped[str | None] = mapped_column(String(2000))
+    url: Mapped[str] = mapped_column(String(1000))
 
     instrument: Mapped[Instrument] = relationship()
 
