@@ -137,6 +137,8 @@ export type Replay = {
   days_done: number
   days_total: number
   current_date: string | null
+  decision_frequency: 'DAILY' | 'WEEKLY'
+  error_message: string | null
   benchmark_replay_id: number | null
   metrics: ReplayMetrics | null
 }
@@ -146,6 +148,7 @@ export type StartReplayBody = {
   initial_capital?: string
   start: string
   end: string
+  decision_frequency?: 'DAILY' | 'WEEKLY'
 }
 
 export type AgentDecision = {

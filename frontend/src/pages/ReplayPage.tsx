@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { equityToLine } from '../api/liveChart'
+import { barsToCandles, walkForwardRange } from '../api/chart'
+import { usePrices } from '../api/client'
+import { barsToIndexedEquity, equityToLine } from '../api/liveChart'
 import { useReplay, useReplayDecisions, useReplayEquity, useReplayMetrics } from '../api/replay'
 import { clearStoredReplayId, readStoredReplayId, storeReplayId } from '../api/replayStorage'
 import type { Replay } from '../api/types'
+import { CandlestickChart } from '../components/CandlestickChart'
 import { DecisionFeed } from '../components/DecisionFeed'
 import { EquityChart } from '../components/EquityChart'
 import { MetricsTable } from '../components/MetricsTable'
@@ -21,13 +24,17 @@ export function ReplayPage() {
     }
   }, [lost])
 
+  const range = walkForwardRange()
+  const contextPrices = usePrices('^FCHI', range.contextStart, range.contextEnd)
+
   if (activeId === null) {
     return (
       <main className="mx-auto max-w-6xl px-6 py-10">
         <h1 className="text-xl font-semibold tracking-tight">Replay</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Replay past months with the same agents and the same fees. Default range is three months.
-          Start must be after the model cutoff (2025-04-01).
+          Walk-forward: {range.contextYear} is context (the model sees that completed year vs the
+          CAC 40). {range.testYear} is the test — prices after <code>as_of</code> stay hidden.
+          Default range is {range.testYear} year-to-date. Weekly is faster for a full year.
         </p>
         <StartReplayForm
           onStarted={(id) => {
@@ -35,6 +42,18 @@ export function ReplayPage() {
             setReplayId(id)
           }}
         />
+        <section className="mt-8 rounded-lg border border-slate-200 bg-white">
+          <h2 className="px-4 pt-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
+            CAC 40 · {range.contextYear} (context)
+          </h2>
+          {contextPrices.error ? (
+            <p className="px-4 py-8 text-sm text-red-700">{contextPrices.error.message}</p>
+          ) : contextPrices.data ? (
+            <CandlestickChart candles={barsToCandles(contextPrices.data)} />
+          ) : (
+            <p className="px-4 py-8 text-sm text-slate-500">Loading CAC 40 {range.contextYear}…</p>
+          )}
+        </section>
       </main>
     )
   }
@@ -58,6 +77,8 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
   const decisions = useReplayDecisions(replayId)
   const metrics = useReplayMetrics(replayId)
   const row = replay.data
+  const indexPrices = usePrices('^FCHI', row?.start_date ?? '', row?.end_date ?? '')
+  const firstEquity = Number(agentsEquity.data?.[0]?.total_value ?? '100000')
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
@@ -76,17 +97,22 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
       </header>
 
       {row ? <ProgressBar done={row.days_done} total={row.days_total} /> : null}
+      {row?.error_message ? <p className="text-sm text-red-700">{row.error_message}</p> : null}
       {replay.error ? <p className="text-sm text-red-700">{replay.error.message}</p> : null}
 
       {metrics.data ? <MetricsTable metrics={metrics.data} /> : null}
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <h2 className="px-4 pt-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-          Equity · agents vs buy and hold
+          Equity · agents vs buy and hold vs CAC 40
         </h2>
+        <p className="px-4 pt-1 text-xs text-slate-500">
+          Black agents · grey equal-weight hold · blue CAC 40 (same window, scaled to starting cash)
+        </p>
         <EquityChart
           agents={equityToLine(agentsEquity.data ?? [])}
           benchmark={equityToLine(holdEquity.data ?? [])}
+          index={barsToIndexedEquity(indexPrices.data ?? [], firstEquity)}
         />
       </section>
 
@@ -94,10 +120,12 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
         <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
           Decisions
         </h2>
-        {decisions.data ? (
+        {decisions.error ? (
+          <p className="text-sm text-red-700">{decisions.error.message}</p>
+        ) : decisions.data ? (
           <DecisionFeed decisions={decisions.data} orders={[]} />
         ) : (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-slate-500">Loading decisions…</p>
         )}
       </section>
     </main>
@@ -105,7 +133,7 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
 }
 
 function statusLine(row: Replay): string {
-  const window = `${row.start_date} → ${row.end_date}`
+  const window = `${row.start_date} → ${row.end_date} · ${row.decision_frequency}`
   if (row.current_date) {
     return `${row.status} · ${window} · last day ${row.current_date}`
   }

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { barsToCandles, lastDayChange } from './chart'
+import { barsToCandles, lastDayChange, walkForwardRange } from './chart'
 import type { Bar } from './types'
 
 function bar(date: string, close: string, open = close): Bar {
@@ -23,4 +23,17 @@ test('lastDayChange uses the two latest closes', () => {
 
 test('lastDayChange is null when there is no bar', () => {
   expect(lastDayChange([])).toBeNull()
+})
+
+test('walkForwardRange uses the previous calendar year as context', () => {
+  const range = walkForwardRange(new Date('2026-10-01T12:00:00Z'))
+
+  expect(range).toEqual({
+    start: '2026-01-02',
+    end: '2026-10-01',
+    contextStart: '2025-01-01',
+    contextEnd: '2025-12-31',
+    contextYear: 2025,
+    testYear: 2026,
+  })
 })

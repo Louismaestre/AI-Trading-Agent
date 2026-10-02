@@ -50,3 +50,23 @@ export function defaultPriceRange(): { start: string; end: string } {
   start.setFullYear(end.getFullYear() - 2)
   return { start: isoDate(start), end: isoDate(end) }
 }
+
+export function walkForwardRange(today = new Date()): {
+  start: string
+  end: string
+  contextStart: string
+  contextEnd: string
+  contextYear: number
+  testYear: number
+} {
+  const testYear = today.getFullYear()
+  const contextYear = testYear - 1
+  return {
+    start: `${testYear}-01-02`,
+    end: isoDate(today),
+    contextStart: `${contextYear}-01-01`,
+    contextEnd: `${contextYear}-12-31`,
+    contextYear,
+    testYear,
+  }
+}

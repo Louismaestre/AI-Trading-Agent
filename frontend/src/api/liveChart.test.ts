@@ -1,7 +1,20 @@
 import { expect, test } from 'vitest'
 
-import { equityToLine, floorToFiveMinutes, orderMarkers } from './liveChart'
+import { barsToIndexedEquity, equityToLine, floorToFiveMinutes, orderMarkers } from './liveChart'
 import type { EquityPoint, Order } from './types'
+
+test('barsToIndexedEquity scales the index to starting capital', () => {
+  const line = barsToIndexedEquity(
+    [
+      { date: '2026-01-02', open: '100', high: '100', low: '100', close: '100', volume: 1 },
+      { date: '2026-01-03', open: '110', high: '110', low: '110', close: '110', volume: 1 },
+    ],
+    100000,
+  )
+
+  expect(line[0]?.value).toBe(100000)
+  expect(line[1]?.value).toBeCloseTo(110000)
+})
 
 test('equityToLine keeps the last value when two points share a second', () => {
   const points: EquityPoint[] = [
