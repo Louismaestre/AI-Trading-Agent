@@ -202,7 +202,7 @@ class LiveSession(TimestampedModel):
 
 
 class Replay(TimestampedModel):
-    """One historical run of the agents on a portfolio, one decision per week."""
+    """One historical run of the agents on a portfolio (daily or weekly decisions)."""
 
     __tablename__ = "replays"
 
@@ -214,6 +214,7 @@ class Replay(TimestampedModel):
     days_done: Mapped[int] = mapped_column(Integer, default=0)
     days_total: Mapped[int] = mapped_column(Integer, default=0)
     current_date: Mapped[datetime.date | None] = mapped_column()
+    error_message: Mapped[str | None] = mapped_column(String(2000))
     kind: Mapped[ReplayKind] = mapped_column(
         Enum(ReplayKind, native_enum=False, length=16), default=ReplayKind.AGENTS
     )
