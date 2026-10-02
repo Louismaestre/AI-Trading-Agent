@@ -45,6 +45,14 @@ class AnalystReport(BaseModel):
     rationale: str
 
 
+class DebateArgument(BaseModel):
+    """One turn from the bull or bear researcher. It does not place an order."""
+
+    side: Literal["BULL", "BEAR"]
+    conviction: float = Field(ge=0, le=1)
+    argument: str
+
+
 class PriorYearContext(BaseModel):
     """Completed calendar year before `as_of`. None of these figures leak the current year."""
 

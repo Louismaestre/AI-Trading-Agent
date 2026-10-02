@@ -3,10 +3,10 @@ from decimal import Decimal
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-from app.agents.graph import build_graph
+from app.agents.graph import GraphConfig, build_graph
 from app.llm import FakeLLM
 from app.models import OrderSide
-from app.schemas.agents import AnalystDecision, QuantityProposal, TechnicalSummary
+from app.schemas.agents import AnalystDecision, DebateArgument, QuantityProposal, TechnicalSummary
 from app.services.portfolio_service import PositionView
 
 
@@ -22,6 +22,7 @@ def _state() -> dict[str, Any]:
         "decision": None,
         "order": None,
         "reports": {},
+        "debate": [],
     }
 
 
@@ -99,7 +100,39 @@ def test_specialists_read_fundamentals_and_news() -> None:
     )
     tools = _tools()
 
-    _run(llm, tools)
+    result = _run(llm, tools)
 
     tools.get_fundamentals.assert_called_once_with("MC.PA")
     tools.get_news.assert_called_once_with("MC.PA")
+    assert result["debate"] == []
+
+
+def test_zero_rounds_skips_researchers() -> None:
+    llm = FakeLLM(
+        [AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")]
+    )
+
+    result = _run(llm, _tools())
+
+    assert result["debate"] == []
+    assert [schema.__name__ for schema, _system, _user in llm.prompts] == ["AnalystDecision"]
+
+
+def test_two_rounds_produce_four_alternating_arguments() -> None:
+    llm = FakeLLM(
+        [
+            DebateArgument(side="BULL", conviction=0.8, argument="up 1"),
+            DebateArgument(side="BEAR", conviction=0.7, argument="valuation stretched"),
+            DebateArgument(side="BULL", conviction=0.6, argument="up 2"),
+            DebateArgument(side="BEAR", conviction=0.5, argument="down 2"),
+            AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait"),
+        ]
+    )
+    graph = cast(Any, build_graph(llm, _tools(), GraphConfig(debate_rounds=2)))
+
+    result = graph.invoke(_state())
+
+    assert [item.side for item in result["debate"]] == ["BULL", "BEAR", "BULL", "BEAR"]
+    assert len(result["debate"]) == 4
+    bull_turns = [user for schema, _system, user in llm.prompts if schema is DebateArgument]
+    assert "valuation stretched" in bull_turns[2]

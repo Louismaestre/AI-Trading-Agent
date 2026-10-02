@@ -8,7 +8,7 @@ from typing import Any, cast
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.agents.graph import build_graph
+from app.agents.graph import GraphConfig, build_graph
 from app.agents.tools import AgentTools
 from app.config import get_settings
 from app.indicators import technical_summary
@@ -25,13 +25,19 @@ HISTORY_LIMIT = 80
 
 
 class AgentService:
-    def __init__(self, session: Session, llm: StructuredLLM | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        llm: StructuredLLM | None = None,
+        graph_config: GraphConfig | None = None,
+    ) -> None:
         self._session = session
         self._portfolios = PortfolioService(session)
         self._market = MarketDataService(session)
         self._fundamentals = FundamentalsService(session)
         self._news = NewsService(session)
         self._llm = llm or OllamaLLM()
+        self._graph_config = graph_config or GraphConfig(debate_rounds=0 if llm is not None else 2)
 
     def run_agents(
         self,
@@ -55,7 +61,7 @@ class AgentService:
             self._fundamentals,
             self._news,
         )
-        graph = cast(Any, build_graph(self._llm, tools))
+        graph = cast(Any, build_graph(self._llm, tools, self._graph_config))
         saved: list[AgentDecision] = []
         for ticker in tickers or tradable_tickers():
             record = self._run_one(graph, tools, portfolio_id, ticker, day, moment)
@@ -97,6 +103,7 @@ class AgentService:
                 "decision": None,
                 "order": None,
                 "reports": {},
+                "debate": [],
             }
         )
         duration_ms = int((time.perf_counter() - started) * 1000)

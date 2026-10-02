@@ -194,8 +194,12 @@ def test_two_buys_set_the_average_cost(db_session: Session) -> None:
     _intraday(db_session, instrument_id, _later(ten, 5), Decimal("100"))
     _intraday(db_session, instrument_id, _later(ten, 15), Decimal("120"))
 
-    _place_and_execute(service, portfolio.id, OrderSide.BUY, 10, _later(ten, 2), _later(ten, 6))
-    _place_and_execute(service, portfolio.id, OrderSide.BUY, 10, _later(ten, 12), _later(ten, 16))
+    _place_and_execute(
+        service, portfolio.id, OrderSide.BUY, 10, _later(ten, 2), _later(ten, 6)
+    )
+    _place_and_execute(
+        service, portfolio.id, OrderSide.BUY, 10, _later(ten, 12), _later(ten, 16)
+    )
 
     first = _slipped(OrderSide.BUY, Decimal("100"))
     second = _slipped(OrderSide.BUY, Decimal("120"))
@@ -210,7 +214,9 @@ def test_index_order_is_rejected(db_session: Session) -> None:
     service = _service(db_session)
     portfolio = service.create("demo")
 
-    order = service.place_order(portfolio.id, "^FCHI", OrderSide.BUY, 1, _paris(2026, 9, 29, 10, 2))
+    order = service.place_order(
+        portfolio.id, "^FCHI", OrderSide.BUY, 1, _paris(2026, 9, 29, 10, 2)
+    )
 
     assert order.status is OrderStatus.REJECTED
     assert order.rejection_reason == REASON_INDEX_NOT_TRADABLE

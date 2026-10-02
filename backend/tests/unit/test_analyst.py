@@ -9,7 +9,7 @@ import pytest
 from app.agents.analyst import decide
 from app.config import get_settings
 from app.llm import FakeLLM, OllamaLLM
-from app.schemas.agents import AnalystDecision, PriorYearContext, TechnicalSummary
+from app.schemas.agents import AnalystDecision, DebateArgument, PriorYearContext, TechnicalSummary
 from app.schemas.portfolio import PositionResponse
 
 _AS_OF = datetime.date(2026, 9, 15)
@@ -72,6 +72,18 @@ def test_prior_year_context_is_included_in_the_prompt() -> None:
     user = llm.prompts[0][2]
     assert "0.12" in user
     assert "^FCHI" in user
+
+
+def test_debate_transcript_is_included_in_the_prompt() -> None:
+    llm = FakeLLM([_decision()])
+    debate = [
+        DebateArgument(side="BULL", conviction=0.8, argument="RSI bounce"),
+        DebateArgument(side="BEAR", conviction=0.7, argument="valuation stretched"),
+    ]
+    decide(llm, _summary(), None, _AS_OF, debate=debate)
+    user = llm.prompts[0][2]
+    assert "RSI bounce" in user
+    assert "valuation stretched" in user
 
 
 def test_open_position_is_included_in_the_prompt() -> None:

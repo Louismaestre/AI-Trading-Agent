@@ -1,8 +1,9 @@
 import datetime
+from operator import add
 from typing import Annotated, TypedDict
 
 from app.models import Order
-from app.schemas.agents import AnalystDecision, AnalystReport, TechnicalSummary
+from app.schemas.agents import AnalystDecision, AnalystReport, DebateArgument, TechnicalSummary
 
 
 def merge_reports(
@@ -19,3 +20,4 @@ class AgentState(TypedDict):
     decision: AnalystDecision | None
     order: Order | None
     reports: Annotated[dict[str, AnalystReport], merge_reports]
+    debate: Annotated[list[DebateArgument], add]
