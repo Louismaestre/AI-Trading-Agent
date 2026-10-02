@@ -45,6 +45,16 @@ class AnalystReport(BaseModel):
     rationale: str
 
 
+class PriorYearContext(BaseModel):
+    """Completed calendar year before `as_of`. None of these figures leak the current year."""
+
+    year: int
+    ticker: str
+    ticker_return: Decimal | None
+    index_ticker: str
+    index_return: Decimal | None
+
+
 class QuantityProposal(BaseModel):
     """How many shares the buyer or seller wants to trade now."""
 

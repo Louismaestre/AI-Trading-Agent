@@ -1,4 +1,4 @@
-from app.universe import UNIVERSE, tradable_tickers
+from app.universe import INDEX_TICKER, UNIVERSE, tradable_tickers
 
 
 def test_tickers_are_unique() -> None:
@@ -17,10 +17,10 @@ def test_isins_are_unique_and_well_formed() -> None:
 
 
 def test_benchmark_index_is_included() -> None:
-    assert "^FCHI" in {entry.ticker for entry in UNIVERSE}
+    assert INDEX_TICKER in {entry.ticker for entry in UNIVERSE}
 
 
 def test_tradable_tickers_exclude_the_index() -> None:
     tickers = tradable_tickers()
-    assert "^FCHI" not in tickers
+    assert INDEX_TICKER not in tickers
     assert "MC.PA" in tickers

@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.models import Order, OrderSide
+from app.schemas.agents import PriorYearContext
 from app.schemas.fundamentals import FundamentalSnapshot
 from app.schemas.news import NewsItem
 from app.services.fundamentals_service import FundamentalsService
-from app.services.market_data_service import MarketDataService
+from app.services.market_data_service import MarketDataService, UnknownTickerError
 from app.services.news_service import NewsService
 from app.services.portfolio_service import PortfolioService, PositionView
+from app.universe import INDEX_TICKER
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,25 @@ class AgentTools:
         if self.news is None:
             return []
         return self.news.get_recent(ticker, self.as_of, days=days, limit=limit)
+
+    def get_prior_year_context(self, ticker: str) -> PriorYearContext | None:
+        """Ticker and CAC 40 returns for the last completed year at `as_of`."""
+        year = self.as_of.year - 1
+        as_of = self.as_of.date()
+        ticker_return = self.market.calendar_return(ticker, year, as_of)
+        try:
+            index_return = self.market.calendar_return(INDEX_TICKER, year, as_of)
+        except UnknownTickerError:
+            index_return = None
+        if ticker_return is None and index_return is None:
+            return None
+        return PriorYearContext(
+            year=year,
+            ticker=ticker,
+            ticker_return=ticker_return,
+            index_ticker=INDEX_TICKER,
+            index_return=index_return,
+        )
 
     def get_position(self, ticker: str) -> PositionView | None:
         snapshot = self.portfolios.snapshot(self.portfolio_id, self.as_of)

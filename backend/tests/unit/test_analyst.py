@@ -9,7 +9,7 @@ import pytest
 from app.agents.analyst import decide
 from app.config import get_settings
 from app.llm import FakeLLM, OllamaLLM
-from app.schemas.agents import AnalystDecision, TechnicalSummary
+from app.schemas.agents import AnalystDecision, PriorYearContext, TechnicalSummary
 from app.schemas.portfolio import PositionResponse
 
 _AS_OF = datetime.date(2026, 9, 15)
@@ -57,6 +57,21 @@ def test_flat_position_is_sent_as_none() -> None:
     llm = FakeLLM([_decision()])
     decide(llm, _summary(), None, _AS_OF)
     assert "none" in llm.prompts[0][2]
+
+
+def test_prior_year_context_is_included_in_the_prompt() -> None:
+    llm = FakeLLM([_decision()])
+    prior = PriorYearContext(
+        year=2025,
+        ticker="MC.PA",
+        ticker_return=Decimal("0.12"),
+        index_ticker="^FCHI",
+        index_return=Decimal("0.08"),
+    )
+    decide(llm, _summary(), None, _AS_OF, prior_year=prior)
+    user = llm.prompts[0][2]
+    assert "0.12" in user
+    assert "^FCHI" in user
 
 
 def test_open_position_is_included_in_the_prompt() -> None:

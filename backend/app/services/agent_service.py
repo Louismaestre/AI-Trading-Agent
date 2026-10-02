@@ -96,6 +96,7 @@ class AgentService:
                 "summary": technical_summary(bars),
                 "decision": None,
                 "order": None,
+                "reports": {},
             }
         )
         duration_ms = int((time.perf_counter() - started) * 1000)

@@ -21,6 +21,7 @@ def _state() -> dict[str, Any]:
         "summary": _summary(),
         "decision": None,
         "order": None,
+        "reports": {},
     }
 
 
@@ -31,6 +32,9 @@ def _tools() -> MagicMock:
     tools.get_cash.return_value = Decimal("100000")
     tools.get_total_value.return_value = Decimal("100000")
     tools.place_order.return_value = MagicMock()
+    tools.get_fundamentals.return_value = None
+    tools.get_news.return_value = []
+    tools.get_prior_year_context.return_value = None
     return tools
 
 
@@ -87,3 +91,15 @@ def test_sell_routes_to_the_seller() -> None:
 
     assert result["decision"].action == "SELL"
     tools.place_order.assert_called_once_with("MC.PA", OrderSide.SELL, 10)
+
+
+def test_specialists_read_fundamentals_and_news() -> None:
+    llm = FakeLLM(
+        [AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")]
+    )
+    tools = _tools()
+
+    _run(llm, tools)
+
+    tools.get_fundamentals.assert_called_once_with("MC.PA")
+    tools.get_news.assert_called_once_with("MC.PA")
