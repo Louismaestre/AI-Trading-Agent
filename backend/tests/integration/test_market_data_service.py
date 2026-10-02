@@ -48,6 +48,16 @@ def test_sync_only_downloads_the_missing_days(
     assert provider.calls[-1] == ("MC.PA", wednesday + datetime.timedelta(days=1), FRIDAY)
 
 
+def test_sync_backfills_days_before_the_stored_range(
+    service: MarketDataService, provider: FakeProvider
+) -> None:
+    wednesday = MONDAY + datetime.timedelta(days=2)
+    service.sync_prices("MC.PA", wednesday, FRIDAY)
+
+    assert service.sync_prices("MC.PA", MONDAY, FRIDAY) == 2
+    assert provider.calls[-1] == ("MC.PA", MONDAY, wednesday - datetime.timedelta(days=1))
+
+
 def test_sync_without_trading_day_stores_nothing(service: MarketDataService) -> None:
     saturday = FRIDAY + datetime.timedelta(days=1)
 
@@ -79,6 +89,15 @@ def test_history_returns_the_latest_bars_oldest_first(service: MarketDataService
     dates = [bar.date for bar in service.get_history("MC.PA", FRIDAY, limit=3)]
 
     assert dates == [FRIDAY - datetime.timedelta(days=n) for n in (2, 1, 0)]
+
+
+def test_calendar_return_waits_until_the_year_is_over(service: MarketDataService) -> None:
+    service.sync_prices("MC.PA", datetime.date(2025, 1, 1), datetime.date(2025, 12, 31))
+
+    assert service.calendar_return("MC.PA", 2025, datetime.date(2025, 6, 15)) is None
+    assert service.calendar_return("MC.PA", 2025, datetime.date(2025, 12, 31)) is None
+    scored = service.calendar_return("MC.PA", 2025, datetime.date(2026, 1, 2))
+    assert scored is not None
 
 
 def test_unknown_ticker_raises(service: MarketDataService) -> None:
