@@ -117,7 +117,7 @@ export type StartLiveSessionBody = {
 }
 
 export type ReplayStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
-export type ReplayKind = 'AGENTS' | 'BUY_AND_HOLD'
+export type ReplayKind = 'AGENTS' | 'BUY_AND_HOLD' | 'SMA_CROSS' | 'RANDOM'
 
 export type ReplayMetrics = {
   total_return: string
@@ -140,6 +140,8 @@ export type Replay = {
   decision_frequency: 'DAILY' | 'WEEKLY'
   error_message: string | null
   benchmark_replay_id: number | null
+  sma_replay_id: number | null
+  random_replay_id: number | null
   metrics: ReplayMetrics | null
 }
 

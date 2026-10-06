@@ -73,7 +73,11 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
   const replay = useReplay(replayId)
   const agentsEquity = useReplayEquity(replayId)
   const holdId = replay.data?.benchmark_replay_id ?? null
+  const smaId = replay.data?.sma_replay_id ?? null
+  const randomId = replay.data?.random_replay_id ?? null
   const holdEquity = useReplayEquity(holdId)
+  const smaEquity = useReplayEquity(smaId)
+  const randomEquity = useReplayEquity(randomId)
   const decisions = useReplayDecisions(replayId)
   const metrics = useReplayMetrics(replayId)
   const row = replay.data
@@ -104,14 +108,17 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <h2 className="px-4 pt-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">
-          Equity · agents vs buy and hold vs CAC 40
+          Equity · agents vs references
         </h2>
         <p className="px-4 pt-1 text-xs text-slate-500">
-          Black agents · grey equal-weight hold · blue CAC 40 (same window, scaled to starting cash)
+          Black agents · grey equal-weight hold · green SMA 20/50 · orange random · blue CAC 40
+          (same window, scaled to starting cash)
         </p>
         <EquityChart
           agents={equityToLine(agentsEquity.data ?? [])}
           benchmark={equityToLine(holdEquity.data ?? [])}
+          sma={equityToLine(smaEquity.data ?? [])}
+          random={equityToLine(randomEquity.data ?? [])}
           index={barsToIndexedEquity(indexPrices.data ?? [], firstEquity)}
         />
       </section>

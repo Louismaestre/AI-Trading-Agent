@@ -117,6 +117,8 @@ def _replay_response(service: ReplayService, replay: Replay) -> ReplayResponse:
         decision_frequency=replay.decision_frequency,
         error_message=replay.error_message,
         benchmark_replay_id=replay.benchmark_replay_id,
+        sma_replay_id=replay.sma_replay_id,
+        random_replay_id=replay.random_replay_id,
         metrics=scored,
     )
 

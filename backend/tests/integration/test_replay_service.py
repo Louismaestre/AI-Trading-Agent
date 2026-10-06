@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.tools import AgentTools
 from app.llm import FakeLLM
-from app.market_clock import session_open
+from app.market_clock import session_open, trading_days
 from app.models import (
     DailyPrice,
     Instrument,
@@ -21,6 +22,7 @@ from app.models import (
 )
 from app.schemas.agents import AnalystDecision, QuantityProposal
 from app.services.agent_service import AgentService
+from app.services.baselines import random_decision
 from app.services.fees import compute_fees, money
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService
@@ -29,12 +31,14 @@ from app.services.replay_service import (
     MissingReplayPricesError,
     ReplayService,
     ReplayStartsTooEarlyError,
+    decision_days,
     fail_interrupted_replays,
 )
 
 START = datetime.date(2026, 9, 15)
 END = datetime.date(2026, 9, 17)
 CUTOFF = datetime.date(2025, 4, 1)
+_HOLD = AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")
 
 
 def _service(db_session: Session, llm: FakeLLM, lookback_sessions: int = 0) -> ReplayService:
@@ -61,6 +65,30 @@ def _seed_daily(session: Session, ticker: str, day: datetime.date, price: Decima
             volume=1000,
         )
     )
+    session.commit()
+
+
+def _seed_range(
+    session: Session,
+    ticker: str,
+    days: list[datetime.date],
+    price_for: Callable[[datetime.date], Decimal],
+) -> None:
+    instrument = session.scalar(select(Instrument).where(Instrument.ticker == ticker))
+    assert instrument is not None
+    for day in days:
+        price = price_for(day)
+        session.add(
+            DailyPrice(
+                instrument_id=instrument.id,
+                date=day,
+                open=price,
+                high=price,
+                low=price,
+                close=price,
+                volume=1000,
+            )
+        )
     session.commit()
 
 
@@ -201,9 +229,17 @@ def test_create_opens_an_equal_weight_buy_and_hold_book(db_session: Session) -> 
 
     assert replay.kind is ReplayKind.AGENTS
     assert replay.benchmark_replay_id is not None
+    assert replay.sma_replay_id is not None
+    assert replay.random_replay_id is not None
     hold = db_session.get(Replay, replay.benchmark_replay_id)
+    sma = db_session.get(Replay, replay.sma_replay_id)
+    rnd = db_session.get(Replay, replay.random_replay_id)
     assert hold is not None
+    assert sma is not None
+    assert rnd is not None
     assert hold.kind is ReplayKind.BUY_AND_HOLD
+    assert sma.kind is ReplayKind.SMA_CROSS
+    assert rnd.kind is ReplayKind.RANDOM
     held = list(
         db_session.scalars(select(Position).where(Position.portfolio_id == hold.portfolio_id))
     )
@@ -289,3 +325,71 @@ def test_buy_and_hold_replay_places_no_further_orders(db_session: Session) -> No
     assert hold_metrics.order_count == 1
     assert hold_metrics.hit_rate is None
     assert hold_metrics.fees_paid > 0
+    assert replay.sma_replay_id is not None
+    sma = db_session.get(Replay, replay.sma_replay_id)
+    assert sma is not None
+    sma_metrics = service.metrics(sma.id)
+    assert sma_metrics.order_count == 0
+    assert sma.status is ReplayStatus.DONE
+
+
+def test_random_replay_matches_the_seeded_decisions(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([_HOLD, _HOLD, _HOLD]))
+    for day in (datetime.date(2026, 9, 14), START, datetime.date(2026, 9, 16), END):
+        _seed_daily(db_session, "MC.PA", day, Decimal("500"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, decision_frequency="DAILY", tickers=["MC.PA"])
+    assert replay.random_replay_id is not None
+    rnd = db_session.get(Replay, replay.random_replay_id)
+    assert rnd is not None
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    held = False
+    in_flight = False
+    expected_buys = 0
+    for day in decision_days(trading_days(START, END), "DAILY"):
+        if in_flight:
+            in_flight = False
+            continue
+        pick = random_decision("MC.PA", day, rnd.id, held, 1.0)
+        if pick.action == "BUY" and not held:
+            expected_buys += 1
+            held = True
+            in_flight = True
+        elif pick.action == "SELL" and held:
+            held = False
+            in_flight = True
+    buys = list(
+        db_session.scalars(
+            select(Order).where(Order.portfolio_id == rnd.portfolio_id, Order.side == OrderSide.BUY)
+        )
+    )
+    assert len(buys) == expected_buys
+
+
+def test_sma_replay_buys_after_a_fast_cross_above(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([_HOLD, _HOLD, _HOLD]))
+    history = trading_days(datetime.date(2026, 6, 1), END)
+    before_start = [day for day in history if day <= START]
+    fast = set(before_start[-20:])
+
+    def price_for(day: datetime.date) -> Decimal:
+        return Decimal("200") if day in fast or day > START else Decimal("100")
+
+    _seed_range(db_session, "MC.PA", history, price_for)
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, decision_frequency="DAILY", tickers=["MC.PA"])
+    assert replay.sma_replay_id is not None
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    sma = db_session.get(Replay, replay.sma_replay_id)
+    assert sma is not None
+    buys = list(
+        db_session.scalars(
+            select(Order).where(Order.portfolio_id == sma.portfolio_id, Order.side == OrderSide.BUY)
+        )
+    )
+    assert len(buys) == 1
+    assert buys[0].status is OrderStatus.FILLED

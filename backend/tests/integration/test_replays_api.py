@@ -109,6 +109,8 @@ def test_replay_api_runs_to_done(client: TestClient, db_session: Session) -> Non
     assert body["days_done"] == 3
     assert body["metrics"] is not None
     assert body["benchmark_replay_id"] is not None
+    assert body["sma_replay_id"] is not None
+    assert body["random_replay_id"] is not None
 
     listed = client.get(f"/api/v1/replays/{replay_id}")
     equity = client.get(f"/api/v1/replays/{replay_id}/equity")

@@ -60,6 +60,8 @@ class ReplayStatus(StrEnum):
 class ReplayKind(StrEnum):
     AGENTS = "AGENTS"
     BUY_AND_HOLD = "BUY_AND_HOLD"
+    SMA_CROSS = "SMA_CROSS"
+    RANDOM = "RANDOM"
 
 
 class Instrument(TimestampedModel):
@@ -223,6 +225,10 @@ class Replay(TimestampedModel):
         Enum(ReplayKind, native_enum=False, length=16), default=ReplayKind.AGENTS
     )
     benchmark_replay_id: Mapped[int | None] = mapped_column(
+        ForeignKey("replays.id", ondelete="SET NULL")
+    )
+    sma_replay_id: Mapped[int | None] = mapped_column(ForeignKey("replays.id", ondelete="SET NULL"))
+    random_replay_id: Mapped[int | None] = mapped_column(
         ForeignKey("replays.id", ondelete="SET NULL")
     )
 

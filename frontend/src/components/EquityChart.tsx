@@ -7,14 +7,28 @@ type Props = {
   agents: LinePoint[]
   benchmark: LinePoint[]
   index?: LinePoint[]
+  sma?: LinePoint[]
+  random?: LinePoint[]
 }
 
-export function EquityChart({ agents, benchmark, index = [] }: Props) {
+export function EquityChart({
+  agents,
+  benchmark,
+  index = [],
+  sma = [],
+  random = [],
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const container = containerRef.current
-    if (container === null || (agents.length === 0 && benchmark.length === 0 && index.length === 0)) {
+    const empty =
+      agents.length === 0 &&
+      benchmark.length === 0 &&
+      index.length === 0 &&
+      sma.length === 0 &&
+      random.length === 0
+    if (container === null || empty) {
       return
     }
 
@@ -52,6 +66,22 @@ export function EquityChart({ agents, benchmark, index = [] }: Props) {
         })
         indexSeries.setData(index)
       }
+      if (sma.length > 0) {
+        const smaSeries = chart.addSeries(LineSeries, {
+          color: '#15803d',
+          lineWidth: 2,
+          title: 'SMA 20/50',
+        })
+        smaSeries.setData(sma)
+      }
+      if (random.length > 0) {
+        const randomSeries = chart.addSeries(LineSeries, {
+          color: '#ea580c',
+          lineWidth: 2,
+          title: 'Random',
+        })
+        randomSeries.setData(random)
+      }
     } catch {
       chart.remove()
       return
@@ -61,9 +91,15 @@ export function EquityChart({ agents, benchmark, index = [] }: Props) {
     return () => {
       chart.remove()
     }
-  }, [agents, benchmark, index])
+  }, [agents, benchmark, index, sma, random])
 
-  if (agents.length === 0 && benchmark.length === 0 && index.length === 0) {
+  if (
+    agents.length === 0 &&
+    benchmark.length === 0 &&
+    index.length === 0 &&
+    sma.length === 0 &&
+    random.length === 0
+  ) {
     return (
       <p className="px-4 py-12 text-center text-sm text-slate-500">
         No equity point yet. The first mark is stored after the next open cycle.

@@ -20,13 +20,11 @@ from app.models import (
     OrderSide,
 )
 from app.services.agent_service import AgentService
+from app.services.fees import FEE_BUFFER
 from app.services.market_data_service import MarketDataService
 from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService, PortfolioView
 from app.services.risk_service import RiskService
 from app.universe import tradable_tickers
-
-# Leave room for brokerage + FTT so equal-weight buys do not exhaust cash.
-_FEE_BUFFER = Decimal("0.994")
 
 DEFAULT_INTERVAL_MINUTES = 15
 INTRADAY_LOOKBACK = datetime.timedelta(days=2)
@@ -135,7 +133,7 @@ class LiveService:
         if not priced:
             return
         capital = self._portfolios.get(portfolio_id).initial_capital
-        usable = capital * _FEE_BUFFER
+        usable = capital * FEE_BUFFER
         weight = 1 / len(priced)
         decision_at = last_close(now)
         for ticker, price in priced:

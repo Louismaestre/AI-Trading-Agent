@@ -41,4 +41,6 @@ class ReplayResponse(BaseModel):
     decision_frequency: str
     error_message: str | None = None
     benchmark_replay_id: int | None
+    sma_replay_id: int | None
+    random_replay_id: int | None
     metrics: ReplayMetricsResponse | None = None

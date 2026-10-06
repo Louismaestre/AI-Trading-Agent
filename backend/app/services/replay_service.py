@@ -14,6 +14,7 @@ from app.llm import StructuredLLM
 from app.market_clock import session_close, session_open, trading_days
 from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
 from app.services.agent_service import AgentService
+from app.services.baseline_runner import run_baseline_day
 from app.services.fees import money
 from app.services.live_service import LiveService
 from app.services.market_data_service import MarketDataService
@@ -134,9 +135,19 @@ class ReplayService:
         hold = self._new_replay(
             hold_book.id, start, end, decision_frequency, len(days), ReplayKind.BUY_AND_HOLD
         )
+        sma_book = self._portfolios.create(f"{source.name} (sma)", source.initial_capital)
+        random_book = self._portfolios.create(f"{source.name} (random)", source.initial_capital)
+        sma = self._new_replay(
+            sma_book.id, start, end, decision_frequency, len(days), ReplayKind.SMA_CROSS
+        )
+        rnd = self._new_replay(
+            random_book.id, start, end, decision_frequency, len(days), ReplayKind.RANDOM
+        )
         agents = self._new_replay(
             portfolio_id, start, end, decision_frequency, len(days), ReplayKind.AGENTS, hold.id
         )
+        agents.sma_replay_id = sma.id
+        agents.random_replay_id = rnd.id
         self._session.commit()
         return agents
 
@@ -149,7 +160,7 @@ class ReplayService:
         tickers: Sequence[str] | None = None,
         decision_frequency: str = WEEKLY,
     ) -> Replay:
-        """Create a portfolio and open the agent replay plus its buy-and-hold twin."""
+        """Create a portfolio and open the agent replay plus its reference twins."""
         if start is None or end is None:
             raise ValueError("start and end are required")
         portfolio = self._portfolios.create(name, initial_capital)
@@ -160,8 +171,13 @@ class ReplayService:
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
         replay = self.get(replay_id)
         self._run_loop(replay, tickers)
-        if replay.benchmark_replay_id is not None:
-            self._run_loop(self.get(replay.benchmark_replay_id), tickers)
+        for linked_id in (
+            replay.benchmark_replay_id,
+            replay.sma_replay_id,
+            replay.random_replay_id,
+        ):
+            if linked_id is not None:
+                self._run_loop(self.get(linked_id), tickers)
         return replay
 
     def metrics(self, replay_id: int) -> ReplayMetrics:
@@ -227,7 +243,7 @@ class ReplayService:
         days = trading_days(replay.start_date, replay.end_date)
         decide_on = (
             set(decision_days(days, replay.decision_frequency))
-            if replay.kind is ReplayKind.AGENTS
+            if replay.kind is not ReplayKind.BUY_AND_HOLD
             else set()
         )
         replay.status = ReplayStatus.RUNNING
@@ -327,7 +343,29 @@ class ReplayService:
             )
         )
         if decide:
+            self._decide(replay, day, opened, tickers)
+
+    def _decide(
+        self,
+        replay: Replay,
+        day: datetime.date,
+        moment: datetime.datetime,
+        tickers: Sequence[str] | None,
+    ) -> None:
+        if replay.kind is ReplayKind.AGENTS:
             self._agents.run_agents(replay.portfolio_id, day, tickers=tickers)
+            return
+        if replay.kind in (ReplayKind.SMA_CROSS, ReplayKind.RANDOM):
+            run_baseline_day(
+                self._portfolios,
+                self._market,
+                replay.portfolio_id,
+                day,
+                moment,
+                list(tickers or tradable_tickers()),
+                replay.kind,
+                replay.id,
+            )
 
 
 def _format_error(exc: BaseException) -> str:

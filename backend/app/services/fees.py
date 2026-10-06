@@ -8,6 +8,8 @@ BROKERAGE_RATE = Decimal("0.001")
 BROKERAGE_MINIMUM = Decimal("1.00")
 # French financial-transaction tax on purchases of large listed companies (2025+).
 FTT_RATE = Decimal("0.004")
+# Leave room for brokerage + FTT so a full-weight buy does not exhaust cash.
+FEE_BUFFER = Decimal("0.994")
 
 _CENTS = Decimal("0.0001")
 
