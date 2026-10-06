@@ -164,3 +164,31 @@ export type AgentDecision = {
   duration_ms: number
   order_id: number | null
 }
+
+export type AnalystStance = 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+
+export type AnalystReport = {
+  stance: AnalystStance
+  confidence: number
+  rationale: string
+}
+
+export type DebateArgument = {
+  side: 'BULL' | 'BEAR'
+  conviction: number
+  argument: string
+}
+
+export type RiskAssessment = {
+  approved: boolean
+  action: AgentAction
+  target_weight: number
+  reasons: string[]
+  triggered_rules: string[]
+}
+
+export type AgentDecisionDetail = AgentDecision & {
+  reports: Record<string, AnalystReport>
+  debate: DebateArgument[]
+  risk: RiskAssessment | null
+}

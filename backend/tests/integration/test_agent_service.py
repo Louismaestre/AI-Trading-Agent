@@ -92,3 +92,25 @@ def test_run_agents_api(client: TestClient, db_session: Session, service: AgentS
     listed = client.get(f"/api/v1/portfolios/{portfolio_id}/decisions")
     assert listed.status_code == 200
     assert listed.json()[0]["rationale"] == "wait"
+
+
+def test_decision_detail_includes_the_specialist_trace(
+    client: TestClient, db_session: Session, service: AgentService
+) -> None:
+    _seed_daily(db_session, "MC.PA", Decimal("610"))
+    portfolio = PortfolioService(db_session).create("demo")
+    records = service.run_agents(portfolio.id, AS_OF, tickers=["MC.PA"])
+
+    response = client.get(f"/api/v1/decisions/{records[0].id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ticker"] == "MC.PA"
+    assert body["reports"]["sentiment"]["stance"] == "NEUTRAL"
+    assert body["debate"] == []
+    assert body["risk"] is None
+
+
+def test_unknown_decision_is_404(client: TestClient) -> None:
+    response = client.get("/api/v1/decisions/999999")
+    assert response.status_code == 404

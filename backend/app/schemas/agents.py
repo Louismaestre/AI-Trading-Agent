@@ -92,3 +92,11 @@ class AgentDecisionResponse(BaseModel):
     llm_model: str
     duration_ms: int
     order_id: int | None
+
+
+class AgentDecisionDetailResponse(AgentDecisionResponse):
+    """One decision plus the specialist reports, debate, and risk verdict."""
+
+    reports: dict[str, AnalystReport] = Field(default_factory=dict)
+    debate: list[DebateArgument] = Field(default_factory=list)
+    risk: RiskAssessment | None = None

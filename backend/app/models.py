@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import TimestampedModel
@@ -169,6 +170,9 @@ class AgentDecision(TimestampedModel):
     llm_model: Mapped[str] = mapped_column(String(100))
     duration_ms: Mapped[int] = mapped_column(Integer)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"))
+    reports: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    debate: Mapped[list[object] | None] = mapped_column(JSONB, nullable=True)
+    risk: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="decisions")
     instrument: Mapped[Instrument] = relationship()

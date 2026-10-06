@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
 import { AppNav } from './components/AppNav'
+import { DecisionPage } from './pages/DecisionPage'
 import { HomePage } from './pages/HomePage'
 import { LivePage } from './pages/LivePage'
 import { MarketPage } from './pages/MarketPage'
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/live" element={<LivePage />} />
           <Route path="/replay" element={<ReplayPage />} />
+          <Route path="/decisions/:decisionId" element={<DecisionPage />} />
         </Routes>
       </div>
     </BrowserRouter>

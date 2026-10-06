@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(market.router, prefix="/api/v1")
     app.include_router(portfolios.router, prefix="/api/v1")
     app.include_router(agents.router, prefix="/api/v1")
+    app.include_router(agents.decisions_router, prefix="/api/v1")
     app.include_router(live.router, prefix="/api/v1")
     app.include_router(replays.router, prefix="/api/v1")
     return app

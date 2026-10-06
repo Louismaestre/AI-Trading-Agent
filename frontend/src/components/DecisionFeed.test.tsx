@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { expect, test } from 'vitest'
 
 import type { AgentDecision, Order } from '../api/types'
@@ -32,20 +33,26 @@ const order: Order = {
 }
 
 test('the feed shows time, action, order and rationale', () => {
-  render(<DecisionFeed decisions={[decision]} orders={[order]} />)
+  render(
+    <MemoryRouter>
+      <DecisionFeed decisions={[decision]} orders={[order]} />
+    </MemoryRouter>,
+  )
 
   expect(screen.getByText('BUY')).toBeInTheDocument()
   expect(screen.getByText('BUY 12')).toBeInTheDocument()
   expect(screen.getByText(/RSI oversold/)).toBeInTheDocument()
-  expect(screen.getByText(/MC.PA/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'MC.PA' })).toHaveAttribute('href', '/decisions/1')
 })
 
 test('HOLD rows have no order size', () => {
   render(
-    <DecisionFeed
-      decisions={[{ ...decision, action: 'HOLD', order_id: null, rationale: 'wait' }]}
-      orders={[]}
-    />,
+    <MemoryRouter>
+      <DecisionFeed
+        decisions={[{ ...decision, action: 'HOLD', order_id: null, rationale: 'wait' }]}
+        orders={[]}
+      />
+    </MemoryRouter>,
   )
 
   expect(screen.getByText('HOLD')).toBeInTheDocument()
