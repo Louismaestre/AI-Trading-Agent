@@ -215,6 +215,47 @@ def test_create_opens_an_equal_weight_buy_and_hold_book(db_session: Session) -> 
     assert agent_positions == []
 
 
+def test_ten_percent_drop_sells_at_the_next_open(db_session: Session) -> None:
+    service = _service(
+        db_session,
+        FakeLLM(
+            [AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")]
+        ),
+    )
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 16), Decimal("90"))
+    _seed_daily(db_session, "MC.PA", END, Decimal("90"))
+    portfolio = PortfolioService(db_session).create("demo")
+    instrument = db_session.scalar(select(Instrument).where(Instrument.ticker == "MC.PA"))
+    assert instrument is not None
+    db_session.add(
+        Position(
+            portfolio_id=portfolio.id,
+            instrument_id=instrument.id,
+            quantity=10,
+            average_cost=Decimal("100"),
+        )
+    )
+    db_session.commit()
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA"])
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    sells = list(
+        db_session.scalars(
+            select(Order).where(Order.portfolio_id == portfolio.id, Order.side == OrderSide.SELL)
+        )
+    )
+    assert len(sells) == 1
+    assert sells[0].quantity == 10
+    assert sells[0].status is OrderStatus.FILLED
+    assert sells[0].executed_at is not None
+    assert sells[0].executed_at.date() == END
+    leftover = db_session.scalar(select(Position).where(Position.portfolio_id == portfolio.id))
+    assert leftover is None
+
+
 def test_buy_and_hold_replay_places_no_further_orders(db_session: Session) -> None:
     service = _service(
         db_session,

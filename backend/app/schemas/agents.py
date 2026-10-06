@@ -63,6 +63,16 @@ class PriorYearContext(BaseModel):
     index_return: Decimal | None
 
 
+class RiskAssessment(BaseModel):
+    """Verdict after the risk layer. `triggered_rules` are Python limit names."""
+
+    approved: bool
+    action: Action
+    target_weight: float = Field(ge=0, le=1)
+    reasons: list[str] = Field(default_factory=list)
+    triggered_rules: list[str] = Field(default_factory=list)
+
+
 class QuantityProposal(BaseModel):
     """How many shares the buyer or seller wants to trade now."""
 

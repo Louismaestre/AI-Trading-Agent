@@ -7,13 +7,15 @@ from app.agents.analyst import decide
 from app.agents.buyer import execute as buy
 from app.agents.debate import argue_bear, argue_bull
 from app.agents.fundamental_analyst import report as fundamental_analyst
+from app.agents.risk_manager import assess
 from app.agents.seller import execute as sell
 from app.agents.sentiment_analyst import report as sentiment_analyst
 from app.agents.state import AgentState
 from app.agents.tools import AgentTools
 from app.llm import StructuredLLM
-from app.schemas.agents import AnalystReport, DebateArgument
+from app.schemas.agents import AnalystReport, DebateArgument, RiskAssessment
 from app.schemas.portfolio import PositionResponse
+from app.services.risk_rules import enforce
 
 _MAX_DEBATE_ROUNDS = 3
 
@@ -23,6 +25,7 @@ class GraphConfig:
     fundamental: bool = True
     sentiment: bool = True
     debate_rounds: int = 0
+    risk: bool = False
 
 
 def build_graph(llm: StructuredLLM, tools: AgentTools, config: GraphConfig | None = None) -> object:
@@ -33,7 +36,12 @@ def build_graph(llm: StructuredLLM, tools: AgentTools, config: GraphConfig | Non
     graph.add_node("analyst", lambda state: _analyst(state, llm, tools))
     graph.add_node("buyer", lambda state: _buyer(state, llm, tools))
     graph.add_node("seller", lambda state: _seller(state, llm, tools))
-    graph.add_conditional_edges("analyst", _route)
+    if config.risk:
+        graph.add_node("risk", lambda state: _risk(state, llm, tools))
+    graph.add_conditional_edges(
+        "analyst",
+        lambda state, via_risk=config.risk: _route(state, via_risk),
+    )
     graph.add_edge("buyer", END)
     graph.add_edge("seller", END)
     specialists = [
@@ -57,6 +65,8 @@ def build_graph(llm: StructuredLLM, tools: AgentTools, config: GraphConfig | Non
             lambda state, limit=rounds: _more_debate(state, limit),
             {"bull": "bull", "analyst": "analyst"},
         )
+    if config.risk:
+        graph.add_conditional_edges("risk", _route)
 
     return graph.compile()
 
@@ -147,10 +157,37 @@ def _seller(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[st
     return {"order": sell(llm, tools, state["ticker"], decision)}
 
 
-def _route(state: AgentState) -> str:
+def _route(state: AgentState, via_risk: bool = False) -> str:
+    """HOLD ends. BUY/SELL go to risk when `via_risk`, else to buyer/seller."""
     decision = state["decision"]
     if decision is None or decision.action == "HOLD":
         return END
+    if via_risk:
+        return "risk"
     if decision.action == "BUY":
         return "buyer"
     return "seller"
+
+
+def _risk(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[str, object]:
+    decision = state["decision"]
+    if decision is None:
+        return {"risk": None}
+    book = tools.get_risk_book(state["ticker"])
+    try:
+        raw = assess(
+            llm,
+            decision,
+            book,
+            state.get("reports"),
+            state.get("debate") or [],
+        )
+    except Exception as exc:
+        raw = RiskAssessment(
+            approved=False,
+            action="HOLD",
+            target_weight=0,
+            reasons=[f"error: {exc}"],
+        )
+    final, assessment = enforce(decision, book, raw)
+    return {"decision": final, "risk": assessment}

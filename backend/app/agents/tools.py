@@ -12,6 +12,8 @@ from app.services.fundamentals_service import FundamentalsService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
 from app.services.news_service import NewsService
 from app.services.portfolio_service import PortfolioService, PositionView
+from app.services.risk_rules import RiskBook
+from app.services.risk_service import RiskService
 from app.universe import INDEX_TICKER
 
 
@@ -54,6 +56,7 @@ class AgentTools:
     as_of: datetime.datetime
     fundamentals: FundamentalsService | None = None
     news: NewsService | None = None
+    risk: RiskService | None = None
 
     def get_last_price(self, ticker: str) -> Decimal | None:
         price = self.market.get_latest_price(ticker, self.as_of)
@@ -107,3 +110,9 @@ class AgentTools:
         if quantity < 1:
             raise ValueError("quantity must be >= 1")
         return self.portfolios.place_order(self.portfolio_id, ticker, side, quantity, self.as_of)
+
+    def get_risk_book(self, ticker: str) -> RiskBook:
+        """Cash, positions and ATR already known at `as_of`. No LLM call."""
+        if self.risk is None:
+            raise RuntimeError("RiskService is not bound")
+        return self.risk.book_for(self.portfolio_id, ticker, self.as_of)

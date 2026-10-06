@@ -25,6 +25,7 @@ from app.services.metrics import (
     total_return,
 )
 from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService
+from app.services.risk_service import RiskService
 from app.universe import tradable_tickers
 
 DAILY = "DAILY"
@@ -97,6 +98,7 @@ class ReplayService:
         self._portfolios = PortfolioService(session)
         self._agents = agents or AgentService(session, llm=llm)
         self._market = MarketDataService(session)
+        self._risk = RiskService(session, self._portfolios, self._market)
         self._cutoff = knowledge_cutoff or get_settings().llm_knowledge_cutoff
         self._lookback_sessions = SMA_SLOW if lookback_sessions is None else lookback_sessions
 
@@ -312,6 +314,9 @@ class ReplayService:
         if opened is None or closed is None:
             return
         self._portfolios.execute_pending_orders(replay.portfolio_id, opened)
+        if replay.kind is ReplayKind.AGENTS:
+            self._risk.trigger_stop_losses(replay.portfolio_id, opened)
+            self._portfolios.execute_pending_orders(replay.portfolio_id, opened)
         snapshot = self._portfolios.snapshot(replay.portfolio_id, closed)
         self._session.add(
             EquityPoint(

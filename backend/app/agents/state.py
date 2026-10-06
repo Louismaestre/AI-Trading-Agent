@@ -3,7 +3,13 @@ from operator import add
 from typing import Annotated, TypedDict
 
 from app.models import Order
-from app.schemas.agents import AnalystDecision, AnalystReport, DebateArgument, TechnicalSummary
+from app.schemas.agents import (
+    AnalystDecision,
+    AnalystReport,
+    DebateArgument,
+    RiskAssessment,
+    TechnicalSummary,
+)
 
 
 def merge_reports(
@@ -21,3 +27,4 @@ class AgentState(TypedDict):
     order: Order | None
     reports: Annotated[dict[str, AnalystReport], merge_reports]
     debate: Annotated[list[DebateArgument], add]
+    risk: RiskAssessment | None

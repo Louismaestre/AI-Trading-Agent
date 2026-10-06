@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from decimal import Decimal
+from itertools import pairwise
 
 import pandas as pd
 
@@ -18,6 +19,7 @@ MACD_SIGNAL = 9
 RETURN_SHORT = 5
 RETURN_LONG = 20
 VOL_WINDOW = 20
+ATR_WINDOW = 14
 
 RSI_OVERSOLD = Decimal("30")
 RSI_OVERBOUGHT = Decimal("70")
@@ -66,6 +68,22 @@ def trailing_return(closes: pd.Series, period: int) -> pd.Series:
 def volatility(closes: pd.Series, window: int = VOL_WINDOW) -> pd.Series:
     """Standard deviation of daily returns over `window` bars."""
     return closes.pct_change().rolling(window=window, min_periods=window).std()
+
+
+def atr(bars: Sequence[Bar], window: int = ATR_WINDOW) -> Decimal | None:
+    """Wilder ATR. Needs `window + 1` bars (true range uses the previous close)."""
+    ordered = sorted(bars, key=lambda bar: bar.date)
+    if len(ordered) < window + 1:
+        return None
+    ranges: list[float] = []
+    for previous, current in pairwise(ordered):
+        high = float(current.high)
+        low = float(current.low)
+        prev_close = float(previous.close)
+        ranges.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+    series = pd.Series(ranges, dtype="float64")
+    wilder = series.ewm(alpha=1 / window, adjust=False, min_periods=window).mean()
+    return _last_decimal(wilder)
 
 
 def technical_summary(bars: Sequence[Bar]) -> TechnicalSummary:

@@ -4,7 +4,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 
-from app.indicators import ema, rsi, sma, technical_summary, trailing_return
+from app.indicators import atr, ema, rsi, sma, technical_summary, trailing_return
 from app.schemas.market import Bar
 
 
@@ -65,6 +65,25 @@ def test_five_day_return_is_close_over_close_five_bars_ago() -> None:
     # 110 / 100 - 1 = 0.10
     result = trailing_return(_closes(100, 101, 102, 103, 104, 110), period=5)
     assert result.iloc[-1] == pytest.approx(0.10)
+
+
+def test_atr_of_a_flat_range_is_the_high_low_spread() -> None:
+    bars = [
+        Bar(
+            date=datetime.date(2026, 1, 2) + datetime.timedelta(days=index),
+            open=Decimal("11"),
+            high=Decimal("12"),
+            low=Decimal("10"),
+            close=Decimal("11"),
+            volume=1000,
+        )
+        for index in range(15)
+    ]
+    assert atr(bars) == Decimal("2")
+
+
+def test_atr_needs_window_plus_one_bars() -> None:
+    assert atr(_bars(*range(14))) is None
 
 
 def test_technical_summary_needs_at_least_one_bar() -> None:

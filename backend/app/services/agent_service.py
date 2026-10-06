@@ -19,6 +19,7 @@ from app.services.fundamentals_service import FundamentalsService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
 from app.services.news_service import NewsService
 from app.services.portfolio_service import PortfolioService
+from app.services.risk_service import RiskService
 from app.universe import tradable_tickers
 
 HISTORY_LIMIT = 80
@@ -36,8 +37,12 @@ class AgentService:
         self._market = MarketDataService(session)
         self._fundamentals = FundamentalsService(session)
         self._news = NewsService(session)
+        self._risk = RiskService(session, self._portfolios, self._market)
         self._llm = llm or OllamaLLM()
-        self._graph_config = graph_config or GraphConfig(debate_rounds=0 if llm is not None else 2)
+        self._graph_config = graph_config or GraphConfig(
+            debate_rounds=0 if llm is not None else 2,
+            risk=llm is None,
+        )
 
     def run_agents(
         self,
@@ -60,6 +65,7 @@ class AgentService:
             moment,
             self._fundamentals,
             self._news,
+            self._risk,
         )
         graph = cast(Any, build_graph(self._llm, tools, self._graph_config))
         saved: list[AgentDecision] = []
@@ -104,6 +110,7 @@ class AgentService:
                 "order": None,
                 "reports": {},
                 "debate": [],
+                "risk": None,
             }
         )
         duration_ms = int((time.perf_counter() - started) * 1000)
