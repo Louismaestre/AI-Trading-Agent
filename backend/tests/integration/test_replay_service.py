@@ -25,19 +25,25 @@ from app.services.fees import compute_fees, money
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService
 from app.services.portfolio_service import PortfolioService
-from app.services.replay_service import ReplayService, ReplayStartsTooEarlyError
+from app.services.replay_service import (
+    MissingReplayPricesError,
+    ReplayService,
+    ReplayStartsTooEarlyError,
+    fail_interrupted_replays,
+)
 
 START = datetime.date(2026, 9, 15)
 END = datetime.date(2026, 9, 17)
 CUTOFF = datetime.date(2025, 4, 1)
 
 
-def _service(db_session: Session, llm: FakeLLM) -> ReplayService:
+def _service(db_session: Session, llm: FakeLLM, lookback_sessions: int = 0) -> ReplayService:
     InstrumentService(db_session).sync_universe()
     return ReplayService(
         db_session,
         agents=AgentService(db_session, llm=llm),
         knowledge_cutoff=CUTOFF,
+        lookback_sessions=lookback_sessions,
     )
 
 
@@ -56,6 +62,70 @@ def _seed_daily(session: Session, ticker: str, day: datetime.date, price: Decima
         )
     )
     session.commit()
+
+
+def test_fail_interrupted_replays_marks_running_rows(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([]))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA"])
+    replay.status = ReplayStatus.RUNNING
+    db_session.commit()
+
+    assert fail_interrupted_replays(db_session) == 1
+    db_session.refresh(replay)
+    assert replay.status is ReplayStatus.FAILED
+    assert replay.error_message is not None
+    assert "restarted" in replay.error_message
+
+
+def test_create_refuses_when_indicator_lookback_is_missing(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([]), lookback_sessions=50)
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    portfolio = PortfolioService(db_session).create("demo")
+
+    with pytest.raises(MissingReplayPricesError, match="50"):
+        service.create(portfolio.id, START, END, tickers=["MC.PA"])
+
+
+def test_create_refuses_a_start_before_stored_prices(db_session: Session) -> None:
+    service = _service(db_session, FakeLLM([]))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    portfolio = PortfolioService(db_session).create("demo")
+
+    with pytest.raises(MissingReplayPricesError, match="2026-09-15"):
+        service.create(
+            portfolio.id,
+            datetime.date(2026, 9, 1),
+            END,
+            tickers=["MC.PA"],
+        )
+
+
+def test_failed_replay_keeps_the_exception_message(db_session: Session) -> None:
+    class _Boom:
+        def run_agents(self, *_args: object, **_kwargs: object) -> list[object]:
+            raise RuntimeError("ollama down")
+
+    InstrumentService(db_session).sync_universe()
+    service = ReplayService(
+        db_session,
+        agents=_Boom(),  # type: ignore[arg-type]
+        knowledge_cutoff=CUTOFF,
+        lookback_sessions=0,
+    )
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    portfolio = PortfolioService(db_session).create("demo")
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA"])
+
+    with pytest.raises(RuntimeError, match="ollama down"):
+        service.run(replay.id, tickers=["MC.PA"])
+
+    assert replay.status is ReplayStatus.FAILED
+    assert replay.error_message == "RuntimeError: ollama down"
 
 
 def test_replay_starting_on_or_before_the_cutoff_is_refused(db_session: Session) -> None:
@@ -143,6 +213,47 @@ def test_create_opens_an_equal_weight_buy_and_hold_book(db_session: Session) -> 
         db_session.scalars(select(Position).where(Position.portfolio_id == portfolio.id))
     )
     assert agent_positions == []
+
+
+def test_ten_percent_drop_sells_at_the_next_open(db_session: Session) -> None:
+    service = _service(
+        db_session,
+        FakeLLM(
+            [AnalystDecision(action="HOLD", confidence=0.4, target_weight=0, rationale="wait")]
+        ),
+    )
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 14), Decimal("100"))
+    _seed_daily(db_session, "MC.PA", START, Decimal("100"))
+    _seed_daily(db_session, "MC.PA", datetime.date(2026, 9, 16), Decimal("90"))
+    _seed_daily(db_session, "MC.PA", END, Decimal("90"))
+    portfolio = PortfolioService(db_session).create("demo")
+    instrument = db_session.scalar(select(Instrument).where(Instrument.ticker == "MC.PA"))
+    assert instrument is not None
+    db_session.add(
+        Position(
+            portfolio_id=portfolio.id,
+            instrument_id=instrument.id,
+            quantity=10,
+            average_cost=Decimal("100"),
+        )
+    )
+    db_session.commit()
+    replay = service.create(portfolio.id, START, END, tickers=["MC.PA"])
+
+    service.run(replay.id, tickers=["MC.PA"])
+
+    sells = list(
+        db_session.scalars(
+            select(Order).where(Order.portfolio_id == portfolio.id, Order.side == OrderSide.SELL)
+        )
+    )
+    assert len(sells) == 1
+    assert sells[0].quantity == 10
+    assert sells[0].status is OrderStatus.FILLED
+    assert sells[0].executed_at is not None
+    assert sells[0].executed_at.date() == END
+    leftover = db_session.scalar(select(Position).where(Position.portfolio_id == portfolio.id))
+    assert leftover is None
 
 
 def test_buy_and_hold_replay_places_no_further_orders(db_session: Session) -> None:

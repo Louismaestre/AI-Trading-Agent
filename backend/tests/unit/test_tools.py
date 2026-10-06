@@ -1,6 +1,9 @@
+import datetime
 from decimal import Decimal
+from unittest.mock import MagicMock
 
-from app.agents.tools import enforce_quantity, target_buy_quantity, target_sell_quantity
+from app.agents.tools import AgentTools, enforce_quantity, target_buy_quantity, target_sell_quantity
+from app.services.risk_rules import RiskBook
 
 
 def test_ten_percent_of_100k_at_500_is_20_shares() -> None:
@@ -29,3 +32,21 @@ def test_sell_quantity_brings_the_position_down_to_the_target_weight() -> None:
     # Keep 20 shares (10 % of 100k at 500), so sell 10 of the 30 held.
     assert target_sell_quantity(30, Decimal("100000"), Decimal("500"), 0.1) == 10
     assert target_sell_quantity(30, Decimal("100000"), Decimal("500"), 0) == 30
+
+
+def test_get_risk_book_delegates_to_the_risk_service() -> None:
+    book = RiskBook(
+        ticker="MC.PA",
+        sector="Luxury",
+        total_value=Decimal("100000"),
+        cash=Decimal("100000"),
+        positions=(),
+        orders_today=0,
+    )
+    risk = MagicMock()
+    risk.book_for.return_value = book
+    as_of = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.UTC)
+    tools = AgentTools(MagicMock(), MagicMock(), 1, as_of, risk=risk)
+
+    assert tools.get_risk_book("MC.PA") is book
+    risk.book_for.assert_called_once_with(1, "MC.PA", as_of)

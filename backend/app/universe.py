@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+INDEX_TICKER = "^FCHI"
+
 
 @dataclass(frozen=True)
 class UniverseEntry:
@@ -25,7 +27,7 @@ UNIVERSE: list[UniverseEntry] = [
     UniverseEntry(ticker="CAP.PA", name="Capgemini", isin="FR0000125338", sector="Technology"),
     UniverseEntry(ticker="DG.PA", name="Vinci", isin="FR0000125486", sector="Construction"),
     # Benchmark index, not traded by the agents.
-    UniverseEntry(ticker="^FCHI", name="CAC 40", isin="FR0003500008", sector="Index"),
+    UniverseEntry(ticker=INDEX_TICKER, name="CAC 40", isin="FR0003500008", sector="Index"),
 ]
 
 

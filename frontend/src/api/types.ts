@@ -137,6 +137,8 @@ export type Replay = {
   days_done: number
   days_total: number
   current_date: string | null
+  decision_frequency: 'DAILY' | 'WEEKLY'
+  error_message: string | null
   benchmark_replay_id: number | null
   metrics: ReplayMetrics | null
 }
@@ -146,6 +148,7 @@ export type StartReplayBody = {
   initial_capital?: string
   start: string
   end: string
+  decision_frequency?: 'DAILY' | 'WEEKLY'
 }
 
 export type AgentDecision = {
@@ -160,4 +163,32 @@ export type AgentDecision = {
   llm_model: string
   duration_ms: number
   order_id: number | null
+}
+
+export type AnalystStance = 'BULLISH' | 'BEARISH' | 'NEUTRAL'
+
+export type AnalystReport = {
+  stance: AnalystStance
+  confidence: number
+  rationale: string
+}
+
+export type DebateArgument = {
+  side: 'BULL' | 'BEAR'
+  conviction: number
+  argument: string
+}
+
+export type RiskAssessment = {
+  approved: boolean
+  action: AgentAction
+  target_weight: number
+  reasons: string[]
+  triggered_rules: string[]
+}
+
+export type AgentDecisionDetail = AgentDecision & {
+  reports: Record<string, AnalystReport>
+  debate: DebateArgument[]
+  risk: RiskAssessment | null
 }

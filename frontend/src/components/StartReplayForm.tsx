@@ -1,26 +1,20 @@
 import { useState, type FormEvent } from 'react'
 
-import { isoDate } from '../api/chart'
+import { walkForwardRange } from '../api/chart'
 import { useStartReplay } from '../api/replay'
 
 type Props = {
   onStarted: (replayId: number) => void
 }
 
-function defaultRange(): { start: string; end: string } {
-  const end = new Date()
-  const start = new Date()
-  start.setMonth(end.getMonth() - 3)
-  return { start: isoDate(start), end: isoDate(end) }
-}
-
 export function StartReplayForm({ onStarted }: Props) {
-  const range = defaultRange()
+  const range = walkForwardRange()
   const start = useStartReplay()
   const [name, setName] = useState('Replay')
   const [capital, setCapital] = useState('100000')
   const [from, setFrom] = useState(range.start)
   const [to, setTo] = useState(range.end)
+  const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY'>('DAILY')
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -29,6 +23,7 @@ export function StartReplayForm({ onStarted }: Props) {
       initial_capital: capital,
       start: from,
       end: to,
+      decision_frequency: frequency,
     })
     onStarted(replay.id)
   }
@@ -60,6 +55,17 @@ export function StartReplayForm({ onStarted }: Props) {
           onChange={(event) => setFrom(event.target.value)}
           className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
         />
+      </label>
+      <label className="block text-sm">
+        <span className="text-slate-500">Decision frequency</span>
+        <select
+          value={frequency}
+          onChange={(event) => setFrequency(event.target.value as 'DAILY' | 'WEEKLY')}
+          className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+        >
+          <option value="DAILY">Every session (more trades)</option>
+          <option value="WEEKLY">Once a week</option>
+        </select>
       </label>
       <label className="block text-sm">
         <span className="text-slate-500">End</span>

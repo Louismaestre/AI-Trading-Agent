@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getJson, postJson } from './http'
-import type { AgentDecision, Bar, Health, Instrument, Order, PlaceOrderBody, Portfolio } from './types'
+import type {
+  AgentDecision,
+  AgentDecisionDetail,
+  Bar,
+  Health,
+  Instrument,
+  Order,
+  PlaceOrderBody,
+  Portfolio,
+} from './types'
 
 export const queryKeys = {
   health: ['health'] as const,
@@ -10,6 +19,7 @@ export const queryKeys = {
   portfolio: (id: number) => ['portfolio', id] as const,
   orders: (id: number) => ['orders', id] as const,
   decisions: (id: number) => ['decisions', id] as const,
+  decision: (id: number) => ['decision', id] as const,
 }
 
 export function getHealth(): Promise<Health> {
@@ -43,6 +53,10 @@ export function placeOrder(portfolioId: number, body: PlaceOrderBody): Promise<O
 
 export function getDecisions(id: number): Promise<AgentDecision[]> {
   return getJson(`/api/v1/portfolios/${id}/decisions`)
+}
+
+export function getDecision(id: number): Promise<AgentDecisionDetail> {
+  return getJson(`/api/v1/decisions/${id}`)
 }
 
 export function runAgents(id: number, asOf?: string): Promise<AgentDecision[]> {
@@ -94,6 +108,14 @@ export function usePlaceOrder(portfolioId: number) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.portfolio(portfolioId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.orders(portfolioId) })
     },
+  })
+}
+
+export function useDecision(id: number | null) {
+  return useQuery({
+    queryKey: queryKeys.decision(id ?? 0),
+    queryFn: () => getDecision(id as number),
+    enabled: id !== null,
   })
 }
 

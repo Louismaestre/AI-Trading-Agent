@@ -34,7 +34,7 @@ test('getPrices builds the query string and encodes the ticker', async () => {
 
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/v1/instruments/%5EFCHI/prices?start=2026-09-01&end=2026-09-10',
-    undefined,
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
 })
 
@@ -69,5 +69,7 @@ test('startLiveSession posts capital and interval', async () => {
 test('getPrices throws the HTTP status when the API fails', async () => {
   stubFetch({ detail: 'Unknown ticker' }, 404)
 
-  await expect(getPrices('NOPE.PA', '2026-09-01', '2026-09-10')).rejects.toThrow('404 Not Found')
+  await expect(getPrices('NOPE.PA', '2026-09-01', '2026-09-10')).rejects.toThrow(
+    '404 Not Found · Unknown ticker',
+  )
 })

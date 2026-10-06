@@ -22,6 +22,7 @@ from app.models import (
 from app.services.agent_service import AgentService
 from app.services.market_data_service import MarketDataService
 from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService, PortfolioView
+from app.services.risk_service import RiskService
 from app.universe import tradable_tickers
 
 # Leave room for brokerage + FTT so equal-weight buys do not exhaust cash.
@@ -74,6 +75,7 @@ class LiveService:
         self._portfolios = PortfolioService(session)
         self._market = market or MarketDataService(session)
         self._agents = agents or AgentService(session, llm=llm)
+        self._risk = RiskService(session, self._portfolios, self._market)
 
     def start(
         self,
@@ -170,6 +172,8 @@ class LiveService:
         self._portfolios.execute_pending_orders(live.portfolio_id, now)
         decisions = []
         if live.kind is LiveSessionKind.AGENTS:
+            self._risk.trigger_stop_losses(live.portfolio_id, now)
+            self._portfolios.execute_pending_orders(live.portfolio_id, now)
             decisions = self._agents.run_agents(live.portfolio_id, now, tickers=tickers)
         snapshot = self._portfolios.snapshot(live.portfolio_id, now)
         point = EquityPoint(

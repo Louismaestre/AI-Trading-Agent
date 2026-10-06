@@ -36,19 +36,36 @@ class MarketDataService:
     # --- Daily bars ---
 
     def sync_prices(self, ticker: str, start: datetime.date, end: datetime.date) -> int:
-        """Download the missing bars up to `end` and store them. Returns the number stored."""
+        """Download missing bars in `[start, end]`, including days before the first stored bar."""
         instrument = self._get_instrument(ticker)
+        first_date, last_date = self._session.execute(
+            select(func.min(DailyPrice.date), func.max(DailyPrice.date)).where(
+                DailyPrice.instrument_id == instrument.id
+            )
+        ).one()
+        if first_date is None or last_date is None:
+            return self._store_daily(instrument.id, ticker, start, end)
 
-        last_date = self._session.scalar(
-            select(func.max(DailyPrice.date)).where(DailyPrice.instrument_id == instrument.id)
-        )
-        first_missing = start if last_date is None else last_date + datetime.timedelta(days=1)
-        if first_missing > end:
-            return 0
+        stored = 0
+        if start < first_date:
+            stored += self._store_daily(
+                instrument.id, ticker, start, first_date - datetime.timedelta(days=1)
+            )
+        first_missing = last_date + datetime.timedelta(days=1)
+        if first_missing <= end:
+            stored += self._store_daily(instrument.id, ticker, first_missing, end)
+        return stored
 
-        bars = self._fetch_bars(ticker, first_missing, end)
-        self._upsert(DailyPrice, "date", instrument.id, bars)
-        return len(bars)
+    def daily_span(
+        self, tickers: Sequence[str]
+    ) -> tuple[datetime.date | None, datetime.date | None]:
+        """Earliest and latest stored daily bar among `tickers`. Both None if the table is empty."""
+        first, last = self._session.execute(
+            select(func.min(DailyPrice.date), func.max(DailyPrice.date))
+            .join(Instrument, Instrument.id == DailyPrice.instrument_id)
+            .where(Instrument.ticker.in_(list(tickers)))
+        ).one()
+        return first, last
 
     def sync_universe_prices(self, start: datetime.date, end: datetime.date) -> int:
         """Sync every instrument. Returns the total number of bars stored."""
@@ -77,6 +94,15 @@ class MarketDataService:
         )
         oldest_first = self._session.scalars(statement).all()
         return [Bar.model_validate(price) for price in oldest_first]
+
+    def calendar_return(self, ticker: str, year: int, as_of: datetime.date) -> Decimal | None:
+        """Close-to-close return of `year`. None until that year is over at `as_of`."""
+        if year >= as_of.year:
+            return None
+        bars = self.get_prices(ticker, datetime.date(year, 1, 1), datetime.date(year, 12, 31))
+        if len(bars) < 2 or bars[0].close == 0:
+            return None
+        return (bars[-1].close / bars[0].close) - Decimal("1")
 
     # --- Intraday (5-minute) bars ---
 
@@ -133,6 +159,15 @@ class MarketDataService:
         )
 
     # --- Helpers ---
+
+    def _store_daily(
+        self, instrument_id: int, ticker: str, start: datetime.date, end: datetime.date
+    ) -> int:
+        if start > end:
+            return 0
+        bars = self._fetch_bars(ticker, start, end)
+        self._upsert(DailyPrice, "date", instrument_id, bars)
+        return len(bars)
 
     def _get_instrument(self, ticker: str) -> Instrument:
         instrument = self._session.scalar(select(Instrument).where(Instrument.ticker == ticker))

@@ -7,15 +7,20 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.models import Instrument
+from app.schemas.fundamentals import FundamentalSnapshot
 from app.schemas.instrument import (
     InstrumentResponse,
+    SyncFundamentalsResponse,
     SyncIntradayRequest,
     SyncPricesRequest,
     SyncPricesResponse,
 )
 from app.schemas.market import Bar, IntradayBar
+from app.schemas.news import NewsItem, SyncNewsResponse
+from app.services.fundamentals_service import FundamentalsService
 from app.services.instrument_service import InstrumentService
 from app.services.market_data_service import MarketDataService, UnknownTickerError
+from app.services.news_service import NewsService
 
 router = APIRouter(prefix="/instruments", tags=["instruments"])
 
@@ -28,6 +33,16 @@ def get_market_data_service(
     session: Annotated[Session, Depends(get_session)],
 ) -> MarketDataService:
     return MarketDataService(session)
+
+
+def get_fundamentals_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> FundamentalsService:
+    return FundamentalsService(session)
+
+
+def get_news_service(session: Annotated[Session, Depends(get_session)]) -> NewsService:
+    return NewsService(session)
 
 
 @router.get("", response_model=list[InstrumentResponse])
@@ -63,6 +78,50 @@ def get_intraday(
         return service.get_intraday(ticker, start, end or datetime.datetime.now(datetime.UTC))
     except UnknownTickerError:
         raise _unknown_ticker(ticker) from None
+
+
+@router.get("/{ticker}/fundamentals", response_model=FundamentalSnapshot)
+def get_fundamentals(
+    ticker: str,
+    service: Annotated[FundamentalsService, Depends(get_fundamentals_service)],
+    as_of: datetime.date | None = None,
+) -> FundamentalSnapshot:
+    """Filings already public at `as_of` (default: today). 404 if the ticker is unknown."""
+    try:
+        return service.get_snapshot(ticker, as_of or datetime.date.today())
+    except UnknownTickerError:
+        raise _unknown_ticker(ticker) from None
+
+
+@router.get("/{ticker}/news", response_model=list[NewsItem])
+def get_news(
+    ticker: str,
+    service: Annotated[NewsService, Depends(get_news_service)],
+    as_of: datetime.date | None = None,
+    days: int = 7,
+    limit: int = 15,
+) -> list[NewsItem]:
+    """Headlines already published at `as_of` (default: today). 404 if the ticker is unknown."""
+    try:
+        return service.get_recent(ticker, as_of or datetime.date.today(), days=days, limit=limit)
+    except UnknownTickerError:
+        raise _unknown_ticker(ticker) from None
+
+
+@router.post("/sync-news", response_model=SyncNewsResponse)
+def sync_news(
+    service: Annotated[NewsService, Depends(get_news_service)],
+) -> SyncNewsResponse:
+    """Download recent headlines (Yahoo RSS + GDELT) for every tradable ticker."""
+    return SyncNewsResponse(articles_stored=service.sync_universe())
+
+
+@router.post("/sync-fundamentals", response_model=SyncFundamentalsResponse)
+def sync_fundamentals(
+    service: Annotated[FundamentalsService, Depends(get_fundamentals_service)],
+) -> SyncFundamentalsResponse:
+    """Download restated quarters for every tradable ticker from Yahoo Finance."""
+    return SyncFundamentalsResponse(periods_stored=service.sync_universe())
 
 
 @router.post("/sync-prices", response_model=SyncPricesResponse)

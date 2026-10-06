@@ -43,3 +43,7 @@ class SyncIntradayRequest(BaseModel):
 
 class SyncPricesResponse(BaseModel):
     bars_stored: int
+
+
+class SyncFundamentalsResponse(BaseModel):
+    periods_stored: int

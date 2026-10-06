@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from app.agents.buyer import execute
 from app.llm import FakeLLM
 from app.models import OrderSide
-from app.schemas.agents import AnalystDecision, QuantityProposal
+from app.schemas.agents import AnalystDecision, QuantityProposal, RiskAssessment
 from app.services.portfolio_service import PositionView
 
 
@@ -18,6 +18,7 @@ def _tools(
     cash: Decimal = Decimal("100000"),
     total_value: Decimal = Decimal("100000"),
     position: PositionView | None = None,
+    risk: RiskAssessment | None = None,
 ) -> MagicMock:
     tools = MagicMock()
     tools.get_last_price.return_value = price
@@ -25,6 +26,7 @@ def _tools(
     tools.get_total_value.return_value = total_value
     tools.get_position.return_value = position
     tools.place_order.return_value = MagicMock()
+    tools.get_risk_assessment.return_value = risk
     return tools
 
 

@@ -6,14 +6,15 @@ import type { LinePoint } from '../api/liveChart'
 type Props = {
   agents: LinePoint[]
   benchmark: LinePoint[]
+  index?: LinePoint[]
 }
 
-export function EquityChart({ agents, benchmark }: Props) {
+export function EquityChart({ agents, benchmark, index = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const container = containerRef.current
-    if (container === null || (agents.length === 0 && benchmark.length === 0)) {
+    if (container === null || (agents.length === 0 && benchmark.length === 0 && index.length === 0)) {
       return
     }
 
@@ -36,20 +37,33 @@ export function EquityChart({ agents, benchmark }: Props) {
       lineWidth: 2,
       title: 'Buy and hold',
     })
-    if (agents.length > 0) {
-      agentsSeries.setData(agents)
-    }
-    if (benchmark.length > 0) {
-      holdSeries.setData(benchmark)
+    try {
+      if (agents.length > 0) {
+        agentsSeries.setData(agents)
+      }
+      if (benchmark.length > 0) {
+        holdSeries.setData(benchmark)
+      }
+      if (index.length > 0) {
+        const indexSeries = chart.addSeries(LineSeries, {
+          color: '#2563eb',
+          lineWidth: 2,
+          title: 'CAC 40',
+        })
+        indexSeries.setData(index)
+      }
+    } catch {
+      chart.remove()
+      return
     }
     chart.timeScale().fitContent()
 
     return () => {
       chart.remove()
     }
-  }, [agents, benchmark])
+  }, [agents, benchmark, index])
 
-  if (agents.length === 0 && benchmark.length === 0) {
+  if (agents.length === 0 && benchmark.length === 0 && index.length === 0) {
     return (
       <p className="px-4 py-12 text-center text-sm text-slate-500">
         No equity point yet. The first mark is stored after the next open cycle.

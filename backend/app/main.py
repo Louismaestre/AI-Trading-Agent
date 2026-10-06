@@ -13,6 +13,7 @@ from app.database import get_engine
 from app.routers import agents, health, instruments, live, market, portfolios, replays
 from app.scheduler import start_scheduler, stop_scheduler
 from app.services.instrument_service import InstrumentService
+from app.services.replay_service import fail_interrupted_replays
 
 
 @asynccontextmanager
@@ -24,6 +25,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     with Session(get_engine()) as session:
         instrument_service = InstrumentService(session)
         instrument_service.sync_universe()
+        if get_settings().app_env != "test":
+            fail_interrupted_replays(session)
     if get_settings().app_env != "test":
         start_scheduler()
     yield
@@ -44,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(market.router, prefix="/api/v1")
     app.include_router(portfolios.router, prefix="/api/v1")
     app.include_router(agents.router, prefix="/api/v1")
+    app.include_router(agents.decisions_router, prefix="/api/v1")
     app.include_router(live.router, prefix="/api/v1")
     app.include_router(replays.router, prefix="/api/v1")
     return app

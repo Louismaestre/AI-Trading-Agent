@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import type { AgentDecision } from '../api/types'
 
 export function DecisionsTable({ decisions }: { decisions: AgentDecision[] }) {
@@ -20,7 +22,14 @@ export function DecisionsTable({ decisions }: { decisions: AgentDecision[] }) {
         {decisions.map((decision) => (
           <tr key={decision.id} className="border-t border-slate-200">
             <td className="py-2 text-slate-500">{decision.as_of}</td>
-            <td className="py-2 font-medium">{decision.ticker}</td>
+            <td className="py-2 font-medium">
+              <Link
+                to={`/decisions/${decision.id}`}
+                className="underline-offset-2 hover:underline"
+              >
+                {decision.ticker}
+              </Link>
+            </td>
             <td className="py-2">{decision.action}</td>
             <td className="py-2">{(decision.confidence * 100).toFixed(0)} %</td>
             <td className="py-2 text-slate-600">{decision.rationale}</td>

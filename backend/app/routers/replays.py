@@ -1,6 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -19,6 +20,7 @@ from app.services.replay_service import (
 )
 
 router = APIRouter(prefix="/replays", tags=["replays"])
+_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="replay")
 
 
 def get_replay_service(session: Annotated[Session, Depends(get_session)]) -> ReplayService:
@@ -35,16 +37,21 @@ def run_replay_job(replay_id: int) -> None:
 def start_replay(
     request: CreateReplayRequest,
     service: Annotated[ReplayService, Depends(get_replay_service)],
-    background: BackgroundTasks,
 ) -> ReplayResponse:
     try:
-        replay = service.start(request.name, request.initial_capital, request.start, request.end)
+        replay = service.start(
+            request.name,
+            request.initial_capital,
+            request.start,
+            request.end,
+            decision_frequency=request.decision_frequency,
+        )
     except (ReplayStartsTooEarlyError, EmptyReplayRangeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
     if get_settings().app_env == "test":
         replay = service.run(replay.id)
     else:
-        background.add_task(run_replay_job, replay.id)
+        _jobs.submit(run_replay_job, replay.id)
     return _replay_response(service, replay)
 
 
@@ -107,6 +114,8 @@ def _replay_response(service: ReplayService, replay: Replay) -> ReplayResponse:
         days_done=replay.days_done,
         days_total=replay.days_total,
         current_date=replay.current_date,
+        decision_frequency=replay.decision_frequency,
+        error_message=replay.error_message,
         benchmark_replay_id=replay.benchmark_replay_id,
         metrics=scored,
     )

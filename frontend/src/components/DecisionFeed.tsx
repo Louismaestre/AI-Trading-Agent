@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 import { formatClock } from '../api/countdown'
 import type { AgentDecision, Order } from '../api/types'
 
@@ -27,7 +29,12 @@ export function DecisionFeed({ decisions, orders }: Props) {
             </span>
             <span className="text-sm text-slate-700">{orderLabel(order)}</span>
             <p className="text-sm text-slate-600">
-              <span className="font-medium text-slate-800">{decision.ticker}</span>
+              <Link
+                to={`/decisions/${decision.id}`}
+                className="font-medium text-slate-800 underline-offset-2 hover:underline"
+              >
+                {decision.ticker}
+              </Link>
               {' · '}
               {decision.rationale}
             </p>

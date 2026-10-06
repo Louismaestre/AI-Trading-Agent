@@ -16,7 +16,7 @@ from app.schemas.agents import AnalystDecision
 from app.services.agent_service import AgentService
 from app.services.instrument_service import InstrumentService
 from app.services.portfolio_service import DEFAULT_CAPITAL
-from app.services.replay_service import ReplayService
+from app.services.replay_service import WEEKLY, ReplayService
 
 START = "2026-09-15"
 END = "2026-09-17"
@@ -32,8 +32,16 @@ class _ReplayService(ReplayService):
         start: datetime.date | None = None,
         end: datetime.date | None = None,
         tickers: Sequence[str] | None = None,
+        decision_frequency: str = WEEKLY,
     ) -> Replay:
-        return super().start(name, initial_capital, start, end, tickers or ["MC.PA"])
+        return super().start(
+            name,
+            initial_capital,
+            start,
+            end,
+            tickers or ["MC.PA"],
+            decision_frequency,
+        )
 
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
         return super().run(replay_id, tickers or ["MC.PA"])
@@ -51,6 +59,7 @@ def service(db_session: Session) -> ReplayService:
             ),
         ),
         knowledge_cutoff=datetime.date(2025, 4, 1),
+        lookback_sessions=0,
     )
 
 
@@ -85,7 +94,13 @@ def test_replay_api_runs_to_done(client: TestClient, db_session: Session) -> Non
 
     created = client.post(
         "/api/v1/replays",
-        json={"name": "demo", "initial_capital": "100000", "start": START, "end": END},
+        json={
+            "name": "demo",
+            "initial_capital": "100000",
+            "start": START,
+            "end": END,
+            "decision_frequency": "WEEKLY",
+        },
     )
     assert created.status_code == 201
     body = created.json()
@@ -105,6 +120,15 @@ def test_replay_api_runs_to_done(client: TestClient, db_session: Session) -> Non
     assert decisions.json()[0]["action"] == "HOLD"
     assert metrics.status_code == 200
     assert metrics.json()["order_count"] == 0
+
+
+def test_replay_without_prices_is_400(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/replays",
+        json={"name": "demo", "start": START, "end": END, "decision_frequency": "WEEKLY"},
+    )
+    assert response.status_code == 400
+    assert "prices" in response.json()["detail"].lower()
 
 
 def test_replay_before_cutoff_is_400(client: TestClient) -> None:

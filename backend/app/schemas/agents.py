@@ -34,6 +34,45 @@ class AnalystDecision(BaseModel):
     rationale: str
 
 
+Stance = Literal["BULLISH", "BEARISH", "NEUTRAL"]
+
+
+class AnalystReport(BaseModel):
+    """Opinion from a specialist analyst. It does not place an order."""
+
+    stance: Stance
+    confidence: float = Field(ge=0, le=1)
+    rationale: str
+
+
+class DebateArgument(BaseModel):
+    """One turn from the bull or bear researcher. It does not place an order."""
+
+    side: Literal["BULL", "BEAR"]
+    conviction: float = Field(ge=0, le=1)
+    argument: str
+
+
+class PriorYearContext(BaseModel):
+    """Completed calendar year before `as_of`. None of these figures leak the current year."""
+
+    year: int
+    ticker: str
+    ticker_return: Decimal | None
+    index_ticker: str
+    index_return: Decimal | None
+
+
+class RiskAssessment(BaseModel):
+    """Verdict after the risk layer. `triggered_rules` are Python limit names."""
+
+    approved: bool
+    action: Action
+    target_weight: float = Field(ge=0, le=1)
+    reasons: list[str] = Field(default_factory=list)
+    triggered_rules: list[str] = Field(default_factory=list)
+
+
 class QuantityProposal(BaseModel):
     """How many shares the buyer or seller wants to trade now."""
 
@@ -53,3 +92,11 @@ class AgentDecisionResponse(BaseModel):
     llm_model: str
     duration_ms: int
     order_id: int | None
+
+
+class AgentDecisionDetailResponse(AgentDecisionResponse):
+    """One decision plus the specialist reports, debate, and risk verdict."""
+
+    reports: dict[str, AnalystReport] = Field(default_factory=dict)
+    debate: list[DebateArgument] = Field(default_factory=list)
+    risk: RiskAssessment | None = None

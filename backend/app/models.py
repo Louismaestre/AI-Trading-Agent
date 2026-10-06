@@ -10,11 +10,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import TimestampedModel
@@ -168,6 +170,9 @@ class AgentDecision(TimestampedModel):
     llm_model: Mapped[str] = mapped_column(String(100))
     duration_ms: Mapped[int] = mapped_column(Integer)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"))
+    reports: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    debate: Mapped[list[object] | None] = mapped_column(JSONB, nullable=True)
+    risk: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="decisions")
     instrument: Mapped[Instrument] = relationship()
@@ -201,7 +206,7 @@ class LiveSession(TimestampedModel):
 
 
 class Replay(TimestampedModel):
-    """One historical run of the agents on a portfolio, one decision per week."""
+    """One historical run of the agents on a portfolio (daily or weekly decisions)."""
 
     __tablename__ = "replays"
 
@@ -213,6 +218,7 @@ class Replay(TimestampedModel):
     days_done: Mapped[int] = mapped_column(Integer, default=0)
     days_total: Mapped[int] = mapped_column(Integer, default=0)
     current_date: Mapped[datetime.date | None] = mapped_column()
+    error_message: Mapped[str | None] = mapped_column(String(2000))
     kind: Mapped[ReplayKind] = mapped_column(
         Enum(ReplayKind, native_enum=False, length=16), default=ReplayKind.AGENTS
     )
@@ -225,6 +231,45 @@ class Replay(TimestampedModel):
     benchmark_replay: Mapped["Replay | None"] = relationship(
         remote_side="Replay.id", foreign_keys=[benchmark_replay_id]
     )
+
+
+class Fundamental(TimestampedModel):
+    """One quarterly filing. Visible in replay only after period_end + publication delay."""
+
+    __tablename__ = "fundamentals"
+    __table_args__ = (UniqueConstraint("instrument_id", "period_end"),)
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    period_end: Mapped[datetime.date] = mapped_column()
+    revenue: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    gross_profit: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    operating_income: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    net_income: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    diluted_eps: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    total_debt: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    total_equity: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    operating_cash_flow: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+
+    instrument: Mapped[Instrument] = relationship()
+
+
+class NewsArticle(TimestampedModel):
+    """One headline tied to an instrument. Hidden in replay when published after `as_of`."""
+
+    __tablename__ = "news_articles"
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "url"),
+        Index("ix_news_articles_instrument_id_published_at", "instrument_id", "published_at"),
+    )
+
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id", ondelete="CASCADE"))
+    published_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(500))
+    summary: Mapped[str | None] = mapped_column(String(2000))
+    url: Mapped[str] = mapped_column(String(1000))
+
+    instrument: Mapped[Instrument] = relationship()
 
 
 class EquityPoint(TimestampedModel):

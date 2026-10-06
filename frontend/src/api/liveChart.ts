@@ -1,6 +1,6 @@
 import type { UTCTimestamp } from 'lightweight-charts'
 
-import type { EquityPoint, IntradayBar, Order } from './types'
+import type { Bar, EquityPoint, IntradayBar, Order } from './types'
 
 export type UtcCandle = {
   time: UTCTimestamp
@@ -30,6 +30,20 @@ export function toUtcSeconds(iso: string): UTCTimestamp {
 export function floorToFiveMinutes(iso: string): UTCTimestamp {
   const slot = 5 * 60
   return (Math.floor(toUtcSeconds(iso) / slot) * slot) as UTCTimestamp
+}
+
+export function barsToIndexedEquity(bars: Bar[], capital: number): LinePoint[] {
+  if (bars.length === 0 || capital <= 0) {
+    return []
+  }
+  const first = Number(bars[0]?.close)
+  if (first === 0 || Number.isNaN(first)) {
+    return []
+  }
+  return bars.map((bar) => ({
+    time: toUtcSeconds(`${bar.date}T15:30:00.000Z`),
+    value: capital * (Number(bar.close) / first),
+  }))
 }
 
 export function equityToLine(points: EquityPoint[]): LinePoint[] {

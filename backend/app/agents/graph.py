@@ -1,24 +1,73 @@
+from dataclasses import dataclass
+from typing import Literal
+
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.analyst import decide
 from app.agents.buyer import execute as buy
+from app.agents.debate import argue_bear, argue_bull
+from app.agents.fundamental_analyst import report as fundamental_analyst
+from app.agents.risk_manager import assess
 from app.agents.seller import execute as sell
+from app.agents.sentiment_analyst import report as sentiment_analyst
 from app.agents.state import AgentState
 from app.agents.tools import AgentTools
 from app.llm import StructuredLLM
+from app.schemas.agents import AnalystReport, DebateArgument, RiskAssessment
 from app.schemas.portfolio import PositionResponse
+from app.services.risk_rules import enforce
+
+_MAX_DEBATE_ROUNDS = 3
 
 
-def build_graph(llm: StructuredLLM, tools: AgentTools) -> object:
-    """Analyst then buyer, seller, or stop, depending on the decision."""
+@dataclass(frozen=True)
+class GraphConfig:
+    fundamental: bool = True
+    sentiment: bool = True
+    debate_rounds: int = 0
+    risk: bool = False
+
+
+def build_graph(llm: StructuredLLM, tools: AgentTools, config: GraphConfig | None = None) -> object:
+    """Specialists, optional bull/bear loop, then analyst, buyer, seller, or stop."""
+    config = config or GraphConfig()
+    rounds = max(0, min(_MAX_DEBATE_ROUNDS, config.debate_rounds))
     graph = StateGraph(AgentState)
     graph.add_node("analyst", lambda state: _analyst(state, llm, tools))
     graph.add_node("buyer", lambda state: _buyer(state, llm, tools))
     graph.add_node("seller", lambda state: _seller(state, llm, tools))
-    graph.add_edge(START, "analyst")
-    graph.add_conditional_edges("analyst", _route)
+    if config.risk:
+        graph.add_node("risk", lambda state: _risk(state, llm, tools))
+    graph.add_conditional_edges(
+        "analyst",
+        lambda state, via_risk=config.risk: _route(state, via_risk),
+    )
     graph.add_edge("buyer", END)
     graph.add_edge("seller", END)
+    specialists = [
+        ("fundamental", config.fundamental, _fundamental),
+        ("sentiment", config.sentiment, _sentiment),
+    ]
+    enabled = [(name, node) for name, on, node in specialists if on]
+    after_specialists = "bull" if rounds else "analyst"
+    if not enabled:
+        graph.add_edge(START, after_specialists)
+    for name, node in enabled:
+        graph.add_node(name, lambda state, node=node: node(state, llm, tools))
+        graph.add_edge(START, name)
+        graph.add_edge(name, after_specialists)
+    if rounds:
+        graph.add_node("bull", lambda state: _researcher(state, llm, tools, "BULL"))
+        graph.add_node("bear", lambda state: _researcher(state, llm, tools, "BEAR"))
+        graph.add_edge("bull", "bear")
+        graph.add_conditional_edges(
+            "bear",
+            lambda state, limit=rounds: _more_debate(state, limit),
+            {"bull": "bull", "analyst": "analyst"},
+        )
+    if config.risk:
+        graph.add_conditional_edges("risk", _route)
+
     return graph.compile()
 
 
@@ -35,7 +84,63 @@ def _analyst(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[s
         if view is not None
         else None
     )
-    return {"decision": decide(llm, state["summary"], position, state["as_of"])}
+    return {
+        "decision": decide(
+            llm,
+            state["summary"],
+            position,
+            state["as_of"],
+            state.get("reports"),
+            tools.get_prior_year_context(state["ticker"]),
+            state.get("debate") or [],
+        )
+    }
+
+
+def _fundamental(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[str, object]:
+    snapshot = tools.get_fundamentals(state["ticker"])
+    if snapshot is None:
+        return {"reports": {}}
+    try:
+        report = fundamental_analyst(llm, snapshot)
+    except Exception as exc:
+        report = AnalystReport(stance="NEUTRAL", confidence=0, rationale=f"error: {exc}")
+    return {"reports": {"fundamental": report}}
+
+
+def _sentiment(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[str, object]:
+    headlines = tools.get_news(state["ticker"])
+    try:
+        report = sentiment_analyst(llm, headlines, state["as_of"])
+    except Exception as exc:
+        report = AnalystReport(stance="NEUTRAL", confidence=0, rationale=f"error: {exc}")
+    return {"reports": {"sentiment": report}}
+
+
+def _researcher(
+    state: AgentState,
+    llm: StructuredLLM,
+    tools: AgentTools,
+    side: Literal["BULL", "BEAR"],
+) -> dict[str, object]:
+    argue = argue_bull if side == "BULL" else argue_bear
+    try:
+        argument = argue(
+            llm,
+            state["summary"],
+            state.get("reports"),
+            tools.get_prior_year_context(state["ticker"]),
+            state.get("debate") or [],
+            state["as_of"],
+        )
+    except Exception as exc:
+        argument = DebateArgument(side=side, conviction=0, argument=f"error: {exc}")
+    return {"debate": [argument]}
+
+
+def _more_debate(state: AgentState, rounds: int) -> str:
+    bears = sum(1 for item in state.get("debate") or [] if item.side == "BEAR")
+    return "bull" if bears < rounds else "analyst"
 
 
 def _buyer(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[str, object]:
@@ -52,10 +157,37 @@ def _seller(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[st
     return {"order": sell(llm, tools, state["ticker"], decision)}
 
 
-def _route(state: AgentState) -> str:
+def _route(state: AgentState, via_risk: bool = False) -> str:
+    """HOLD ends. BUY/SELL go to risk when `via_risk`, else to buyer/seller."""
     decision = state["decision"]
     if decision is None or decision.action == "HOLD":
         return END
+    if via_risk:
+        return "risk"
     if decision.action == "BUY":
         return "buyer"
     return "seller"
+
+
+def _risk(state: AgentState, llm: StructuredLLM, tools: AgentTools) -> dict[str, object]:
+    decision = state["decision"]
+    if decision is None:
+        return {"risk": None}
+    book = tools.get_risk_book(state["ticker"])
+    try:
+        raw = assess(
+            llm,
+            decision,
+            book,
+            state.get("reports"),
+            state.get("debate") or [],
+        )
+    except Exception as exc:
+        raw = RiskAssessment(
+            approved=False,
+            action="HOLD",
+            target_weight=0,
+            reasons=[f"error: {exc}"],
+        )
+    final, assessment = enforce(decision, book, raw)
+    return {"decision": final, "risk": assessment}

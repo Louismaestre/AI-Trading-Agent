@@ -1,6 +1,7 @@
 """Replay the same agents over past sessions. Only the clock changes vs live."""
 
 import datetime
+import logging
 from collections.abc import Sequence
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.indicators import SMA_SLOW
 from app.llm import StructuredLLM
 from app.market_clock import session_close, session_open, trading_days
 from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
@@ -23,9 +25,14 @@ from app.services.metrics import (
     total_return,
 )
 from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService
+from app.services.risk_service import RiskService
 from app.universe import tradable_tickers
 
+DAILY = "DAILY"
 WEEKLY = "WEEKLY"
+FREQUENCIES = (DAILY, WEEKLY)
+_ERROR_LIMIT = 2000
+logger = logging.getLogger(__name__)
 
 
 class UnknownReplayError(LookupError):
@@ -38,6 +45,10 @@ class ReplayStartsTooEarlyError(ValueError):
 
 class EmptyReplayRangeError(ValueError):
     """No Euronext session falls in the requested period."""
+
+
+class MissingReplayPricesError(ValueError):
+    """The stored daily bars do not cover the replay start."""
 
 
 def first_session_of_each_week(days: Sequence[datetime.date]) -> list[datetime.date]:
@@ -54,6 +65,26 @@ def first_session_of_each_week(days: Sequence[datetime.date]) -> list[datetime.d
     return chosen
 
 
+def fail_interrupted_replays(session: Session) -> int:
+    """Mark jobs left RUNNING after a process restart so the UI does not wait forever."""
+    rows = list(session.scalars(select(Replay).where(Replay.status == ReplayStatus.RUNNING)))
+    for row in rows:
+        row.status = ReplayStatus.FAILED
+        row.error_message = "Interrupted when the API restarted."
+    if rows:
+        session.commit()
+    return len(rows)
+
+
+def decision_days(days: Sequence[datetime.date], frequency: str) -> list[datetime.date]:
+    """Which sessions trigger `run_agents`. Unknown frequencies are rejected."""
+    if frequency == DAILY:
+        return list(days)
+    if frequency == WEEKLY:
+        return first_session_of_each_week(days)
+    raise ValueError(f"Unknown decision frequency: {frequency}")
+
+
 class ReplayService:
     def __init__(
         self,
@@ -61,12 +92,15 @@ class ReplayService:
         llm: StructuredLLM | None = None,
         agents: AgentService | None = None,
         knowledge_cutoff: datetime.date | None = None,
+        lookback_sessions: int | None = None,
     ) -> None:
         self._session = session
         self._portfolios = PortfolioService(session)
         self._agents = agents or AgentService(session, llm=llm)
         self._market = MarketDataService(session)
+        self._risk = RiskService(session, self._portfolios, self._market)
         self._cutoff = knowledge_cutoff or get_settings().llm_knowledge_cutoff
+        self._lookback_sessions = SMA_SLOW if lookback_sessions is None else lookback_sessions
 
     def create(
         self,
@@ -81,12 +115,18 @@ class ReplayService:
             raise ReplayStartsTooEarlyError(
                 f"Replay start {start.isoformat()} must be after {self._cutoff.isoformat()}"
             )
+        if decision_frequency not in FREQUENCIES:
+            raise ValueError(f"Unknown decision frequency: {decision_frequency}")
         if end < start:
             raise ValueError("end_date must be on or after start_date")
         days = trading_days(start, end)
         if not days:
-            raise EmptyReplayRangeError(f"{start.isoformat()} .. {end.isoformat()}")
+            raise EmptyReplayRangeError(
+                f"No Euronext session between {start.isoformat()} and {end.isoformat()} "
+                "(weekend or holiday). Pick a range that includes a trading day."
+            )
         universe = list(tickers or tradable_tickers())
+        self._require_prices(start, universe)
         hold_book = self._portfolios.create(f"{source.name} (buy and hold)", source.initial_capital)
         opened = session_open(days[0])
         if opened is not None:
@@ -107,12 +147,15 @@ class ReplayService:
         start: datetime.date | None = None,
         end: datetime.date | None = None,
         tickers: Sequence[str] | None = None,
+        decision_frequency: str = WEEKLY,
     ) -> Replay:
         """Create a portfolio and open the agent replay plus its buy-and-hold twin."""
         if start is None or end is None:
             raise ValueError("start and end are required")
         portfolio = self._portfolios.create(name, initial_capital)
-        return self.create(portfolio.id, start, end, tickers=tickers)
+        return self.create(
+            portfolio.id, start, end, decision_frequency=decision_frequency, tickers=tickers
+        )
 
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
         replay = self.get(replay_id)
@@ -183,9 +226,12 @@ class ReplayService:
     def _run_loop(self, replay: Replay, tickers: Sequence[str] | None) -> None:
         days = trading_days(replay.start_date, replay.end_date)
         decide_on = (
-            set(first_session_of_each_week(days)) if replay.kind is ReplayKind.AGENTS else set()
+            set(decision_days(days, replay.decision_frequency))
+            if replay.kind is ReplayKind.AGENTS
+            else set()
         )
         replay.status = ReplayStatus.RUNNING
+        replay.error_message = None
         self._session.commit()
         try:
             for index, day in enumerate(days, start=1):
@@ -193,12 +239,44 @@ class ReplayService:
                 replay.days_done = index
                 replay.current_date = day
                 self._session.commit()
-        except Exception:
+        except Exception as exc:
             replay.status = ReplayStatus.FAILED
+            replay.error_message = _format_error(exc)
             self._session.commit()
+            logger.exception("Replay %s failed on %s", replay.id, replay.current_date)
             raise
         replay.status = ReplayStatus.DONE
         self._session.commit()
+
+    def _require_prices(self, start: datetime.date, tickers: Sequence[str]) -> None:
+        first, last = self._market.daily_span(tickers)
+        if first is None or last is None or last < start:
+            raise MissingReplayPricesError(
+                f"No daily prices covering {start.isoformat()}. "
+                "POST /api/v1/instruments/sync-prices first (it backfills earlier days)."
+            )
+        if first > start:
+            raise MissingReplayPricesError(
+                f"Daily prices start on {first.isoformat()}, after the replay start "
+                f"{start.isoformat()}. Sync a longer history or start later."
+            )
+        needed = self._lookback_start(start)
+        if needed is not None and first > needed:
+            raise MissingReplayPricesError(
+                f"Need about {self._lookback_sessions} sessions before {start.isoformat()} "
+                f"for SMA/RSI/MACD (history starts {first.isoformat()}). "
+                "POST /api/v1/instruments/sync-prices first."
+            )
+
+    def _lookback_start(self, start: datetime.date) -> datetime.date | None:
+        if self._lookback_sessions < 1:
+            return None
+        prior = trading_days(
+            start - datetime.timedelta(days=180), start - datetime.timedelta(days=1)
+        )
+        if len(prior) < self._lookback_sessions:
+            return prior[0] if prior else None
+        return prior[-self._lookback_sessions]
 
     def _hit_rate(self, replay: Replay) -> Decimal | None:
         if replay.kind is not ReplayKind.AGENTS:
@@ -236,6 +314,9 @@ class ReplayService:
         if opened is None or closed is None:
             return
         self._portfolios.execute_pending_orders(replay.portfolio_id, opened)
+        if replay.kind is ReplayKind.AGENTS:
+            self._risk.trigger_stop_losses(replay.portfolio_id, opened)
+            self._portfolios.execute_pending_orders(replay.portfolio_id, opened)
         snapshot = self._portfolios.snapshot(replay.portfolio_id, closed)
         self._session.add(
             EquityPoint(
@@ -247,3 +328,10 @@ class ReplayService:
         )
         if decide:
             self._agents.run_agents(replay.portfolio_id, day, tickers=tickers)
+
+
+def _format_error(exc: BaseException) -> str:
+    text = f"{type(exc).__name__}: {exc}"
+    if len(text) <= _ERROR_LIMIT:
+        return text
+    return text[: _ERROR_LIMIT - 1] + "…"
