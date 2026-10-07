@@ -15,14 +15,19 @@ from app.market_clock import session_close, session_open, trading_days
 from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
 from app.services.agent_service import AgentService
 from app.services.baseline_runner import run_baseline_day
+from app.services.calibration import calibrate_confidence
 from app.services.fees import money
 from app.services.live_service import LiveService
 from app.services.market_data_service import MarketDataService
 from app.services.metrics import (
     ReplayMetrics,
+    annualized_volatility,
+    daily_returns,
     hit_rate,
     max_drawdown,
     prediction_correct,
+    sharpe_ratio,
+    sortino_ratio,
     total_return,
 )
 from app.services.portfolio_service import DEFAULT_CAPITAL, PortfolioService
@@ -94,14 +99,19 @@ class ReplayService:
         agents: AgentService | None = None,
         knowledge_cutoff: datetime.date | None = None,
         lookback_sessions: int | None = None,
+        risk_free_rate: Decimal | None = None,
     ) -> None:
         self._session = session
         self._portfolios = PortfolioService(session)
         self._agents = agents or AgentService(session, llm=llm)
         self._market = MarketDataService(session)
         self._risk = RiskService(session, self._portfolios, self._market)
-        self._cutoff = knowledge_cutoff or get_settings().llm_knowledge_cutoff
+        settings = get_settings()
+        self._cutoff = knowledge_cutoff or settings.llm_knowledge_cutoff
         self._lookback_sessions = SMA_SLOW if lookback_sessions is None else lookback_sessions
+        self._risk_free_rate = (
+            risk_free_rate if risk_free_rate is not None else settings.risk_free_rate
+        )
 
     def create(
         self,
@@ -187,12 +197,18 @@ class ReplayService:
         fees = money(
             sum((order.fees for order in orders if order.fees is not None), start=Decimal("0"))
         )
+        returns = daily_returns(values)
+        scored = self._scored_calls(replay)
         return ReplayMetrics(
             total_return=total_return(values),
             max_drawdown=max_drawdown(values),
             order_count=len(orders),
             fees_paid=fees,
-            hit_rate=self._hit_rate(replay),
+            hit_rate=hit_rate([correct for _, correct in scored]) if scored else None,
+            volatility=annualized_volatility(returns),
+            sharpe=sharpe_ratio(returns, self._risk_free_rate),
+            sortino=sortino_ratio(returns, self._risk_free_rate),
+            calibration=calibrate_confidence(scored) if replay.kind is ReplayKind.AGENTS else None,
         )
 
     def get(self, replay_id: int) -> Replay:
@@ -294,11 +310,11 @@ class ReplayService:
             return prior[0] if prior else None
         return prior[-self._lookback_sessions]
 
-    def _hit_rate(self, replay: Replay) -> Decimal | None:
+    def _scored_calls(self, replay: Replay) -> list[tuple[float, bool]]:
         if replay.kind is not ReplayKind.AGENTS:
-            return None
+            return []
         days = trading_days(replay.start_date, replay.end_date)
-        outcomes: list[bool] = []
+        outcomes: list[tuple[float, bool]] = []
         for record in self._agents.list_decisions(replay.portfolio_id):
             following = next((day for day in days if day > record.as_of), None)
             if following is None:
@@ -307,10 +323,10 @@ class ReplayService:
             close_after = self._close_on(record.instrument.ticker, following)
             if close_at is None or close_after is None:
                 continue
-            scored = prediction_correct(record.action, close_at, close_after)
-            if scored is not None:
-                outcomes.append(scored)
-        return hit_rate(outcomes)
+            correct = prediction_correct(record.action, close_at, close_after)
+            if correct is not None:
+                outcomes.append((record.confidence, correct))
+        return outcomes
 
     def _close_on(self, ticker: str, day: datetime.date) -> Decimal | None:
         bars = self._market.get_history(ticker, day, limit=1)

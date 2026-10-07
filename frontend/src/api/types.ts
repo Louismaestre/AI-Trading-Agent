@@ -119,12 +119,24 @@ export type StartLiveSessionBody = {
 export type ReplayStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
 export type ReplayKind = 'AGENTS' | 'BUY_AND_HOLD' | 'SMA_CROSS' | 'RANDOM'
 
+export type CalibrationBucket = {
+  low: string
+  high: string
+  count: number
+  hit_rate: string | null
+  mean_confidence: string | null
+}
+
 export type ReplayMetrics = {
   total_return: string
   max_drawdown: string
   order_count: number
   fees_paid: string
   hit_rate: string | null
+  volatility: string | null
+  sharpe: string | null
+  sortino: string | null
+  calibration: CalibrationBucket[] | null
 }
 
 export type Replay = {

@@ -20,12 +20,24 @@ class CreateReplayRequest(BaseModel):
     decision_frequency: DecisionFrequency = "DAILY"
 
 
+class CalibrationBucketResponse(BaseModel):
+    low: Decimal
+    high: Decimal
+    count: int
+    hit_rate: Decimal | None
+    mean_confidence: Decimal | None
+
+
 class ReplayMetricsResponse(BaseModel):
     total_return: Decimal
     max_drawdown: Decimal
     order_count: int
     fees_paid: Decimal
     hit_rate: Decimal | None
+    volatility: Decimal | None
+    sharpe: Decimal | None
+    sortino: Decimal | None
+    calibration: list[CalibrationBucketResponse] | None = None
 
 
 class ReplayResponse(BaseModel):

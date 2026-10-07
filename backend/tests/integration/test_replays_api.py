@@ -122,6 +122,10 @@ def test_replay_api_runs_to_done(client: TestClient, db_session: Session) -> Non
     assert decisions.json()[0]["action"] == "HOLD"
     assert metrics.status_code == 200
     assert metrics.json()["order_count"] == 0
+    assert "sharpe" in metrics.json()
+    assert "sortino" in metrics.json()
+    assert "volatility" in metrics.json()
+    assert metrics.json()["calibration"] is not None
 
 
 def test_replay_without_prices_is_400(client: TestClient) -> None:

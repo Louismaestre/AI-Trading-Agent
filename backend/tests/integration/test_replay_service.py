@@ -325,6 +325,9 @@ def test_buy_and_hold_replay_places_no_further_orders(db_session: Session) -> No
     assert hold_metrics.order_count == 1
     assert hold_metrics.hit_rate is None
     assert hold_metrics.fees_paid > 0
+    assert scored.volatility is not None
+    assert scored.calibration is not None
+    assert hold_metrics.calibration is None
     assert replay.sma_replay_id is not None
     sma = db_session.get(Replay, replay.sma_replay_id)
     assert sma is not None

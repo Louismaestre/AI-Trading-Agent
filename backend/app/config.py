@@ -1,6 +1,7 @@
 """Application settings, loaded from environment variables and the root `.env` file."""
 
 import datetime
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
@@ -21,6 +22,8 @@ class Settings(BaseSettings):
     llm_knowledge_cutoff: datetime.date = datetime.date(2025, 4, 1)
     # A quarter is unknown until this many days after period_end (yfinance has no filing date).
     fundamentals_publication_delay_days: int = 60
+    # Annual risk-free rate used for Sharpe / Sortino (e.g. 0.02 for 2 % €STR).
+    risk_free_rate: Decimal = Decimal("0")
 
 
 @lru_cache

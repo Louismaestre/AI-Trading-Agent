@@ -1,11 +1,14 @@
-import { formatEuro, formatPercent } from '../api/money'
+import { formatEuro, formatPercent, formatRatio } from '../api/money'
 import type { ReplayMetrics } from '../api/types'
 
 export function MetricsTable({ metrics }: { metrics: ReplayMetrics }) {
   return (
-    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Stat label="Total return" value={formatPercent(metrics.total_return)} />
       <Stat label="Max drawdown" value={formatPercent(metrics.max_drawdown)} />
+      <Stat label="Volatility" value={formatNullablePercent(metrics.volatility)} />
+      <Stat label="Sharpe" value={formatRatio(metrics.sharpe)} />
+      <Stat label="Sortino" value={formatRatio(metrics.sortino)} />
       <Stat label="Orders" value={String(metrics.order_count)} />
       <Stat label="Fees" value={formatEuro(metrics.fees_paid)} />
       <Stat
@@ -14,6 +17,10 @@ export function MetricsTable({ metrics }: { metrics: ReplayMetrics }) {
       />
     </dl>
   )
+}
+
+function formatNullablePercent(value: string | null): string {
+  return value === null ? '—' : formatPercent(value)
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

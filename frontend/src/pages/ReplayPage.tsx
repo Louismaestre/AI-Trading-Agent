@@ -9,6 +9,7 @@ import type { Replay } from '../api/types'
 import { CandlestickChart } from '../components/CandlestickChart'
 import { DecisionFeed } from '../components/DecisionFeed'
 import { EquityChart } from '../components/EquityChart'
+import { CalibrationTable } from '../components/CalibrationTable'
 import { MetricsTable } from '../components/MetricsTable'
 import { StartReplayForm } from '../components/StartReplayForm'
 
@@ -105,6 +106,19 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
       {replay.error ? <p className="text-sm text-red-700">{replay.error.message}</p> : null}
 
       {metrics.data ? <MetricsTable metrics={metrics.data} /> : null}
+      {metrics.data?.calibration ? (
+        <section className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
+            Confidence calibration
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Next-session hit rate by stated confidence. High confidence should win more often.
+          </p>
+          <div className="mt-3">
+            <CalibrationTable buckets={metrics.data.calibration} />
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <h2 className="px-4 pt-3 text-sm font-semibold tracking-wide text-slate-500 uppercase">

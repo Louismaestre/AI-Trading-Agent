@@ -2,6 +2,13 @@ export function formatPercent(fraction: string | number): string {
   return `${(Number(fraction) * 100).toFixed(2)} %`
 }
 
+export function formatRatio(value: string | number | null): string {
+  if (value === null) {
+    return '—'
+  }
+  return Number(value).toFixed(2)
+}
+
 export function formatEuro(value: string | number): string {
   return Number(value).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
 }

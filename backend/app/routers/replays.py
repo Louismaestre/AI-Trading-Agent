@@ -10,7 +10,12 @@ from app.models import EquityPoint, Replay, ReplayStatus
 from app.routers.agents import decision_response
 from app.schemas.agents import AgentDecisionResponse
 from app.schemas.live import EquityPointResponse
-from app.schemas.replay import CreateReplayRequest, ReplayMetricsResponse, ReplayResponse
+from app.schemas.replay import (
+    CalibrationBucketResponse,
+    CreateReplayRequest,
+    ReplayMetricsResponse,
+    ReplayResponse,
+)
 from app.services.metrics import ReplayMetrics
 from app.services.replay_service import (
     EmptyReplayRangeError,
@@ -130,6 +135,23 @@ def _metrics_response(scored: ReplayMetrics) -> ReplayMetricsResponse:
         order_count=scored.order_count,
         fees_paid=scored.fees_paid,
         hit_rate=scored.hit_rate,
+        volatility=scored.volatility,
+        sharpe=scored.sharpe,
+        sortino=scored.sortino,
+        calibration=(
+            None
+            if scored.calibration is None
+            else [
+                CalibrationBucketResponse(
+                    low=bucket.low,
+                    high=bucket.high,
+                    count=bucket.count,
+                    hit_rate=bucket.hit_rate,
+                    mean_confidence=bucket.mean_confidence,
+                )
+                for bucket in scored.calibration
+            ]
+        ),
     )
 
 
