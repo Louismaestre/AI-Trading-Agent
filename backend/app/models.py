@@ -299,3 +299,14 @@ class EquityPoint(TimestampedModel):
 
     session: Mapped[LiveSession | None] = relationship(back_populates="equity_points")
     replay: Mapped[Replay | None] = relationship(back_populates="equity_points")
+
+
+class LlmCache(TimestampedModel):
+    """One structured LLM answer, keyed by a hash of model, schema and prompts."""
+
+    __tablename__ = "llm_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(64), unique=True)
+    model: Mapped[str] = mapped_column(String(100))
+    schema_name: Mapped[str] = mapped_column(String(100))
+    response: Mapped[dict[str, object]] = mapped_column(JSONB)

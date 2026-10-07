@@ -13,6 +13,7 @@ from app.agents.tools import AgentTools
 from app.config import get_settings
 from app.indicators import technical_summary
 from app.llm import OllamaLLM, StructuredLLM
+from app.llm_cache import CachedLLM
 from app.market_clock import ensure_aware, session_open
 from app.models import AgentAction, AgentDecision, Instrument
 from app.schemas.agents import AnalystReport, DebateArgument, RiskAssessment
@@ -43,7 +44,7 @@ class AgentService:
         self._fundamentals = FundamentalsService(session)
         self._news = NewsService(session)
         self._risk = RiskService(session, self._portfolios, self._market)
-        self._llm = llm or OllamaLLM()
+        self._llm = llm if llm is not None else _default_llm(session)
         self._graph_config = graph_config or GraphConfig(
             debate_rounds=0 if llm is not None else 2,
             risk=llm is None,
@@ -181,3 +182,17 @@ def _as_of_datetime(day: datetime.date) -> datetime.datetime:
     if opened is not None:
         return opened
     return datetime.datetime.combine(day, datetime.time(12, 0), tzinfo=datetime.UTC)
+
+
+def _default_llm(session: Session) -> StructuredLLM:
+    settings = get_settings()
+    ollama = OllamaLLM()
+    if not settings.llm_cache:
+        return ollama
+    return CachedLLM(
+        ollama,
+        session,
+        provider="ollama",
+        model=settings.llm_model,
+        temperature=settings.llm_temperature,
+    )

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     fundamentals_publication_delay_days: int = 60
     # Annual risk-free rate used for Sharpe / Sortino (e.g. 0.02 for 2 % €STR).
     risk_free_rate: Decimal = Decimal("0")
+    # Reuse identical structured answers so a replay can be rerun without new Ollama calls.
+    llm_cache: bool = True
 
 
 @lru_cache

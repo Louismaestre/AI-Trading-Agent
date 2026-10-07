@@ -17,6 +17,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LLM_KNOWLEDGE_CUTOFF",
         "FUNDAMENTALS_PUBLICATION_DELAY_DAYS",
         "RISK_FREE_RATE",
+        "LLM_CACHE",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -40,6 +41,7 @@ def test_reads_values_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.llm_knowledge_cutoff.isoformat() == "2025-04-01"
     assert settings.fundamentals_publication_delay_days == 60
     assert settings.risk_free_rate == 0
+    assert settings.llm_cache is True
 
 
 def test_missing_database_url_is_rejected() -> None:
