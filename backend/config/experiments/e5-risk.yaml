@@ -1,0 +1,12 @@
+id: E5
+name: E5 + risk manager
+question: Does the risk layer reduce drawdown versus E4?
+start: 2026-01-02
+end: 2026-03-31
+initial_capital: 100000
+decision_frequency: WEEKLY
+graph:
+  fundamental: true
+  sentiment: true
+  debate_rounds: 2
+  risk: true

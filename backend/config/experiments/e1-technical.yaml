@@ -1,0 +1,12 @@
+id: E1
+name: E1 technical analyst
+question: Does a technical-only LLM beat the baselines?
+start: 2026-01-02
+end: 2026-03-31
+initial_capital: 100000
+decision_frequency: WEEKLY
+graph:
+  fundamental: false
+  sentiment: false
+  debate_rounds: 0
+  risk: false

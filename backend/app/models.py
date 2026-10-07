@@ -231,6 +231,8 @@ class Replay(TimestampedModel):
     random_replay_id: Mapped[int | None] = mapped_column(
         ForeignKey("replays.id", ondelete="SET NULL")
     )
+    experiment_id: Mapped[str | None] = mapped_column(String(16))
+    graph: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
 
     portfolio: Mapped[Portfolio] = relationship()
     equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="replay")

@@ -33,6 +33,8 @@ class _ReplayService(ReplayService):
         end: datetime.date | None = None,
         tickers: Sequence[str] | None = None,
         decision_frequency: str = WEEKLY,
+        experiment_id: str | None = None,
+        graph: dict[str, object] | None = None,
     ) -> Replay:
         return super().start(
             name,
@@ -41,6 +43,8 @@ class _ReplayService(ReplayService):
             end,
             tickers or ["MC.PA"],
             decision_frequency,
+            experiment_id=experiment_id,
+            graph=graph,
         )
 
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:

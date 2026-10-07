@@ -154,11 +154,12 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
 }
 
 function statusLine(row: Replay): string {
+  const experiment = row.experiment_id ? `${row.experiment_id} · ` : ''
   const window = `${row.start_date} → ${row.end_date} · ${row.decision_frequency}`
   if (row.current_date) {
-    return `${row.status} · ${window} · last day ${row.current_date}`
+    return `${row.status} · ${experiment}${window} · last day ${row.current_date}`
   }
-  return `${row.status} · ${window}`
+  return `${row.status} · ${experiment}${window}`
 }
 
 function ProgressBar({ done, total }: { done: number; total: number }) {

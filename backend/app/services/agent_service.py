@@ -184,15 +184,31 @@ def _as_of_datetime(day: datetime.date) -> datetime.datetime:
     return datetime.datetime.combine(day, datetime.time(12, 0), tzinfo=datetime.UTC)
 
 
-def _default_llm(session: Session) -> StructuredLLM:
+def build_agent_service(
+    session: Session,
+    graph: GraphConfig,
+    *,
+    llm: StructuredLLM | None = None,
+    model: str | None = None,
+) -> AgentService:
+    """Wire a graph variant. `llm` is for tests; otherwise Ollama, optionally cached."""
+    return AgentService(
+        session,
+        llm=llm if llm is not None else _default_llm(session, model),
+        graph_config=graph,
+    )
+
+
+def _default_llm(session: Session, model: str | None = None) -> StructuredLLM:
     settings = get_settings()
-    ollama = OllamaLLM()
+    name = model or settings.llm_model
+    ollama = OllamaLLM(model=name)
     if not settings.llm_cache:
         return ollama
     return CachedLLM(
         ollama,
         session,
         provider="ollama",
-        model=settings.llm_model,
+        model=name,
         temperature=settings.llm_temperature,
     )

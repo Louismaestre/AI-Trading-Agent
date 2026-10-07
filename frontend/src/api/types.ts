@@ -154,7 +154,27 @@ export type Replay = {
   benchmark_replay_id: number | null
   sma_replay_id: number | null
   random_replay_id: number | null
+  experiment_id: string | null
   metrics: ReplayMetrics | null
+}
+
+export type ExperimentGraph = {
+  fundamental: boolean
+  sentiment: boolean
+  debate_rounds: number
+  risk: boolean
+  model: string | null
+}
+
+export type Experiment = {
+  id: string
+  name: string
+  question: string
+  start: string
+  end: string
+  initial_capital: string
+  decision_frequency: 'DAILY' | 'WEEKLY'
+  graph: ExperimentGraph
 }
 
 export type StartReplayBody = {

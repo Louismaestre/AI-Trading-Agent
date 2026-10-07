@@ -55,4 +55,5 @@ class ReplayResponse(BaseModel):
     benchmark_replay_id: int | None
     sma_replay_id: int | None
     random_replay_id: int | None
+    experiment_id: str | None = None
     metrics: ReplayMetricsResponse | None = None

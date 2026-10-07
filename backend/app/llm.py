@@ -46,7 +46,7 @@ class FakeLLM:
 class OllamaLLM:
     """Local Ollama model with structured output. Thinking is disabled."""
 
-    def __init__(self, chat: _Chat | None = None) -> None:
+    def __init__(self, chat: _Chat | None = None, model: str | None = None) -> None:
         if chat is not None:
             self._chat = chat
             return
@@ -54,7 +54,7 @@ class OllamaLLM:
         self._chat = cast(
             _Chat,
             ChatOllama(
-                model=settings.llm_model,
+                model=model or settings.llm_model,
                 base_url=settings.ollama_base_url,
                 temperature=settings.llm_temperature,
                 reasoning=False,

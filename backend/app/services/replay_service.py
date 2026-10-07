@@ -8,12 +8,14 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.graph import GraphConfig
 from app.config import get_settings
 from app.indicators import SMA_SLOW
 from app.llm import StructuredLLM
 from app.market_clock import session_close, session_open, trading_days
 from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
-from app.services.agent_service import AgentService
+from app.schemas.experiments import ExperimentGraph
+from app.services.agent_service import AgentService, build_agent_service
 from app.services.baseline_runner import run_baseline_day
 from app.services.calibration import calibrate_confidence
 from app.services.fees import money
@@ -103,6 +105,7 @@ class ReplayService:
     ) -> None:
         self._session = session
         self._portfolios = PortfolioService(session)
+        self._agents_override = agents is not None or llm is not None
         self._agents = agents or AgentService(session, llm=llm)
         self._market = MarketDataService(session)
         self._risk = RiskService(session, self._portfolios, self._market)
@@ -120,6 +123,8 @@ class ReplayService:
         end: datetime.date,
         decision_frequency: str = WEEKLY,
         tickers: Sequence[str] | None = None,
+        experiment_id: str | None = None,
+        graph: dict[str, object] | None = None,
     ) -> Replay:
         source = self._portfolios.get(portfolio_id)
         if start <= self._cutoff:
@@ -158,6 +163,8 @@ class ReplayService:
         )
         agents.sma_replay_id = sma.id
         agents.random_replay_id = rnd.id
+        agents.experiment_id = experiment_id
+        agents.graph = graph
         self._session.commit()
         return agents
 
@@ -169,17 +176,27 @@ class ReplayService:
         end: datetime.date | None = None,
         tickers: Sequence[str] | None = None,
         decision_frequency: str = WEEKLY,
+        experiment_id: str | None = None,
+        graph: dict[str, object] | None = None,
     ) -> Replay:
         """Create a portfolio and open the agent replay plus its reference twins."""
         if start is None or end is None:
             raise ValueError("start and end are required")
         portfolio = self._portfolios.create(name, initial_capital)
         return self.create(
-            portfolio.id, start, end, decision_frequency=decision_frequency, tickers=tickers
+            portfolio.id,
+            start,
+            end,
+            decision_frequency=decision_frequency,
+            tickers=tickers,
+            experiment_id=experiment_id,
+            graph=graph,
         )
 
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
         replay = self.get(replay_id)
+        if not self._agents_override:
+            self._agents = _agents_from_stored_graph(self._session, replay.graph)
         self._run_loop(replay, tickers)
         for linked_id in (
             replay.benchmark_replay_id,
@@ -382,6 +399,13 @@ class ReplayService:
                 replay.kind,
                 replay.id,
             )
+
+
+def _agents_from_stored_graph(session: Session, raw: dict[str, object] | None) -> AgentService:
+    if raw is None:
+        return build_agent_service(session, GraphConfig(debate_rounds=2, risk=True))
+    stored = ExperimentGraph.model_validate(raw)
+    return build_agent_service(session, stored.to_graph_config(), model=stored.model)
 
 
 def _format_error(exc: BaseException) -> str:

@@ -1,0 +1,13 @@
+id: E6
+name: E6 full graph
+question: How does the full graph behave with this model? Change graph.model to compare.
+start: 2026-01-02
+end: 2026-03-31
+initial_capital: 100000
+decision_frequency: WEEKLY
+graph:
+  fundamental: true
+  sentiment: true
+  debate_rounds: 2
+  risk: true
+  model: qwen3:8b

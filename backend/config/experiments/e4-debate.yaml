@@ -1,0 +1,12 @@
+id: E4
+name: E4 + debate
+question: Do two bull/bear rounds improve the analyst decision?
+start: 2026-01-02
+end: 2026-03-31
+initial_capital: 100000
+decision_frequency: WEEKLY
+graph:
+  fundamental: true
+  sentiment: true
+  debate_rounds: 2
+  risk: false

@@ -124,6 +124,7 @@ def _replay_response(service: ReplayService, replay: Replay) -> ReplayResponse:
         benchmark_replay_id=replay.benchmark_replay_id,
         sma_replay_id=replay.sma_replay_id,
         random_replay_id=replay.random_replay_id,
+        experiment_id=replay.experiment_id,
         metrics=scored,
     )
 

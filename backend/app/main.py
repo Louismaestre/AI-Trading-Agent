@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_engine
-from app.routers import agents, health, instruments, live, market, portfolios, replays
+from app.routers import agents, experiments, health, instruments, live, market, portfolios, replays
 from app.scheduler import start_scheduler, stop_scheduler
 from app.services.instrument_service import InstrumentService
 from app.services.replay_service import fail_interrupted_replays
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.decisions_router, prefix="/api/v1")
     app.include_router(live.router, prefix="/api/v1")
     app.include_router(replays.router, prefix="/api/v1")
+    app.include_router(experiments.router, prefix="/api/v1")
     return app
 
 
