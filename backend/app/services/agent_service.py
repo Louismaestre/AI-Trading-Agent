@@ -184,31 +184,59 @@ def _as_of_datetime(day: datetime.date) -> datetime.datetime:
     return datetime.datetime.combine(day, datetime.time(12, 0), tzinfo=datetime.UTC)
 
 
+def llm_overrides(raw: dict[str, object] | None) -> tuple[float | None, bool | None]:
+    """Read optional temperature/cache flags stored on a replay graph snapshot."""
+    if raw is None:
+        return None, None
+    temperature = raw.get("temperature")
+    cache = raw.get("cache")
+    return (
+        float(temperature)
+        if isinstance(temperature, int | float) and not isinstance(temperature, bool)
+        else None,
+        cache if isinstance(cache, bool) else None,
+    )
+
+
 def build_agent_service(
     session: Session,
     graph: GraphConfig,
     *,
     llm: StructuredLLM | None = None,
     model: str | None = None,
+    temperature: float | None = None,
+    cache: bool | None = None,
 ) -> AgentService:
     """Wire a graph variant. `llm` is for tests; otherwise Ollama, optionally cached."""
     return AgentService(
         session,
-        llm=llm if llm is not None else _default_llm(session, model),
+        llm=(
+            llm
+            if llm is not None
+            else _default_llm(session, model, temperature=temperature, cache=cache)
+        ),
         graph_config=graph,
     )
 
 
-def _default_llm(session: Session, model: str | None = None) -> StructuredLLM:
+def _default_llm(
+    session: Session,
+    model: str | None = None,
+    *,
+    temperature: float | None = None,
+    cache: bool | None = None,
+) -> StructuredLLM:
     settings = get_settings()
     name = model or settings.llm_model
-    ollama = OllamaLLM(model=name)
-    if not settings.llm_cache:
+    temp = settings.llm_temperature if temperature is None else temperature
+    ollama = OllamaLLM(model=name, temperature=temp)
+    use_cache = settings.llm_cache if cache is None else cache
+    if not use_cache:
         return ollama
     return CachedLLM(
         ollama,
         session,
         provider="ollama",
         model=name,
-        temperature=settings.llm_temperature,
+        temperature=temp,
     )

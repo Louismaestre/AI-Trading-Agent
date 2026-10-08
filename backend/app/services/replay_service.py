@@ -15,7 +15,7 @@ from app.llm import StructuredLLM
 from app.market_clock import session_close, session_open, trading_days
 from app.models import AgentDecision, EquityPoint, Replay, ReplayKind, ReplayStatus
 from app.schemas.experiments import ExperimentGraph
-from app.services.agent_service import AgentService, build_agent_service
+from app.services.agent_service import AgentService, build_agent_service, llm_overrides
 from app.services.baseline_runner import run_baseline_day
 from app.services.calibration import calibrate_confidence
 from app.services.fees import money
@@ -125,6 +125,8 @@ class ReplayService:
         tickers: Sequence[str] | None = None,
         experiment_id: str | None = None,
         graph: dict[str, object] | None = None,
+        batch_id: str | None = None,
+        repeat_index: int | None = None,
     ) -> Replay:
         source = self._portfolios.get(portfolio_id)
         if start <= self._cutoff:
@@ -165,6 +167,8 @@ class ReplayService:
         agents.random_replay_id = rnd.id
         agents.experiment_id = experiment_id
         agents.graph = graph
+        agents.batch_id = batch_id
+        agents.repeat_index = repeat_index
         self._session.commit()
         return agents
 
@@ -178,6 +182,8 @@ class ReplayService:
         decision_frequency: str = WEEKLY,
         experiment_id: str | None = None,
         graph: dict[str, object] | None = None,
+        batch_id: str | None = None,
+        repeat_index: int | None = None,
     ) -> Replay:
         """Create a portfolio and open the agent replay plus its reference twins."""
         if start is None or end is None:
@@ -191,6 +197,8 @@ class ReplayService:
             tickers=tickers,
             experiment_id=experiment_id,
             graph=graph,
+            batch_id=batch_id,
+            repeat_index=repeat_index,
         )
 
     def run(self, replay_id: int, tickers: Sequence[str] | None = None) -> Replay:
@@ -405,7 +413,14 @@ def _agents_from_stored_graph(session: Session, raw: dict[str, object] | None) -
     if raw is None:
         return build_agent_service(session, GraphConfig(debate_rounds=2, risk=True))
     stored = ExperimentGraph.model_validate(raw)
-    return build_agent_service(session, stored.to_graph_config(), model=stored.model)
+    temperature, cache = llm_overrides(raw)
+    return build_agent_service(
+        session,
+        stored.to_graph_config(),
+        model=stored.model,
+        temperature=temperature,
+        cache=cache,
+    )
 
 
 def _format_error(exc: BaseException) -> str:

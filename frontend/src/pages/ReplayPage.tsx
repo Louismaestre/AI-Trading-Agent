@@ -3,14 +3,21 @@ import { useEffect, useState } from 'react'
 import { barsToCandles, walkForwardRange } from '../api/chart'
 import { usePrices } from '../api/client'
 import { barsToIndexedEquity, equityToLine } from '../api/liveChart'
-import { useReplay, useReplayDecisions, useReplayEquity, useReplayMetrics } from '../api/replay'
+import {
+  useReplay,
+  useReplayDecisions,
+  useReplayEquity,
+  useReplayMetrics,
+  useReplaySignificance,
+} from '../api/replay'
 import { clearStoredReplayId, readStoredReplayId, storeReplayId } from '../api/replayStorage'
-import type { Replay } from '../api/types'
+import type { Replay, ReplaySignificance } from '../api/types'
 import { CandlestickChart } from '../components/CandlestickChart'
 import { DecisionFeed } from '../components/DecisionFeed'
 import { EquityChart } from '../components/EquityChart'
 import { CalibrationTable } from '../components/CalibrationTable'
 import { MetricsTable } from '../components/MetricsTable'
+import { SignificanceTable } from '../components/SignificanceTable'
 import { StartReplayForm } from '../components/StartReplayForm'
 
 export function ReplayPage() {
@@ -81,6 +88,7 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
   const randomEquity = useReplayEquity(randomId)
   const decisions = useReplayDecisions(replayId)
   const metrics = useReplayMetrics(replayId)
+  const significance = useReplaySignificance(replayId)
   const row = replay.data
   const indexPrices = usePrices('^FCHI', row?.start_date ?? '', row?.end_date ?? '')
   const firstEquity = Number(agentsEquity.data?.[0]?.total_value ?? '100000')
@@ -90,7 +98,9 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Replay</h1>
-          {row ? <p className="mt-2 text-sm text-slate-500">{statusLine(row)}</p> : null}
+          {row ? (
+            <p className="mt-2 text-sm text-slate-500">{statusLine(row, significance.data)}</p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -106,6 +116,7 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
       {replay.error ? <p className="text-sm text-red-700">{replay.error.message}</p> : null}
 
       {metrics.data ? <MetricsTable metrics={metrics.data} /> : null}
+      {significance.data ? <SignificanceTable scored={significance.data} /> : null}
       {metrics.data?.calibration ? (
         <section className="rounded-lg border border-slate-200 bg-white px-4 py-3">
           <h2 className="text-sm font-semibold tracking-wide text-slate-500 uppercase">
@@ -153,13 +164,18 @@ function ReplayView({ replayId, onReset }: { replayId: number; onReset: () => vo
   )
 }
 
-function statusLine(row: Replay): string {
+function statusLine(row: Replay, scored?: ReplaySignificance): string {
   const experiment = row.experiment_id ? `${row.experiment_id} · ` : ''
+  const total = scored?.batch?.count
+  const repeat =
+    row.repeat_index !== null && total !== undefined && total > 1
+      ? `repeat ${row.repeat_index + 1}/${total} · `
+      : ''
   const window = `${row.start_date} → ${row.end_date} · ${row.decision_frequency}`
   if (row.current_date) {
-    return `${row.status} · ${experiment}${window} · last day ${row.current_date}`
+    return `${row.status} · ${experiment}${repeat}${window} · last day ${row.current_date}`
   }
-  return `${row.status} · ${experiment}${window}`
+  return `${row.status} · ${experiment}${repeat}${window}`
 }
 
 function ProgressBar({ done, total }: { done: number; total: number }) {

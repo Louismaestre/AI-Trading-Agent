@@ -19,14 +19,18 @@ export function StartReplayForm({ onStarted }: Props) {
   const [from, setFrom] = useState(range.start)
   const [to, setTo] = useState(range.end)
   const [frequency, setFrequency] = useState<'DAILY' | 'WEEKLY'>('DAILY')
+  const [repeats, setRepeats] = useState(1)
   const selected = experiments.data?.find((item) => item.id === experimentId)
   const pending = start.isPending || startExperiment.isPending
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (experimentId !== '') {
-      const replay = await startExperiment.mutateAsync(experimentId)
-      onStarted(replay.id)
+      const run = await startExperiment.mutateAsync({ id: experimentId, repeats })
+      const first = run.repeats[0]
+      if (first !== undefined) {
+        onStarted(first.id)
+      }
       return
     }
     const replay = await start.mutateAsync({
@@ -107,10 +111,23 @@ export function StartReplayForm({ onStarted }: Props) {
           </label>
         </>
       ) : (
-        <p className="text-sm text-slate-500">
-          {selected?.start} → {selected?.end} · {selected?.decision_frequency} · same costs as every
-          replay
-        </p>
+        <>
+          <p className="text-sm text-slate-500">
+            {selected?.start} → {selected?.end} · {selected?.decision_frequency} · same costs as every
+            replay
+          </p>
+          <label className="block text-sm">
+            <span className="text-slate-500">Repeats</span>
+            <input
+              type="number"
+              min={1}
+              max={5}
+              value={repeats}
+              onChange={(event) => setRepeats(Number(event.target.value))}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+            />
+          </label>
+        </>
       )}
       <button
         type="submit"

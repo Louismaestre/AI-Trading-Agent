@@ -155,7 +155,42 @@ export type Replay = {
   sma_replay_id: number | null
   random_replay_id: number | null
   experiment_id: string | null
+  batch_id: string | null
+  repeat_index: number | null
   metrics: ReplayMetrics | null
+}
+
+export type ExperimentRun = {
+  batch_id: string
+  repeats: Replay[]
+}
+
+export type SharpeInterval = {
+  low: string
+  high: string
+}
+
+export type SharpeComparison = {
+  p_value: string
+  significant: boolean
+}
+
+export type RepeatSummary = {
+  count: number
+  mean_return: string
+  std_return: string | null
+  replay_ids: number[]
+}
+
+export type ReplaySignificance = {
+  replay_id: number
+  batch_id: string | null
+  repeat_index: number | null
+  sharpe_ci: SharpeInterval | null
+  vs_hold: SharpeComparison | null
+  vs_sma: SharpeComparison | null
+  vs_random: SharpeComparison | null
+  batch: RepeatSummary | null
 }
 
 export type ExperimentGraph = {

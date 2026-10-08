@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from app.services.experiment_service import DuplicateExperimentIdError, load_experiments
+from app.services.agent_service import llm_overrides
+from app.services.experiment_service import (
+    DuplicateExperimentIdError,
+    ExperimentService,
+    load_experiments,
+)
 
 DIR = Path(__file__).resolve().parents[2] / "config" / "experiments"
 
@@ -30,6 +35,19 @@ def test_e1_is_technical_only_and_e5_adds_risk() -> None:
     assert by_id["E5"].graph.sentiment is True
     assert by_id["E5"].graph.debate_rounds == 2
     assert by_id["E5"].graph.risk is True
+
+
+def test_repeats_must_be_between_one_and_five(tmp_path: Path) -> None:
+    service = ExperimentService(object(), directory=tmp_path)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="repeats"):
+        service.start("E1", repeats=0)
+    with pytest.raises(ValueError, match="repeats"):
+        service.start("E1", repeats=6)
+
+
+def test_llm_overrides_read_repeat_flags() -> None:
+    assert llm_overrides({"temperature": 0.2, "cache": False}) == (0.2, False)
+    assert llm_overrides({"model": "qwen3:8b"}) == (None, None)
 
 
 def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:

@@ -233,6 +233,8 @@ class Replay(TimestampedModel):
     )
     experiment_id: Mapped[str | None] = mapped_column(String(16))
     graph: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(16), index=True)
+    repeat_index: Mapped[int | None] = mapped_column(Integer)
 
     portfolio: Mapped[Portfolio] = relationship()
     equity_points: Mapped[list["EquityPoint"]] = relationship(back_populates="replay")

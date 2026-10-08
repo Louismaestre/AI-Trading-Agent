@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getJson, postJson } from './http'
-import type { AgentDecision, EquityPoint, Replay, ReplayMetrics, StartReplayBody } from './types'
+import type {
+  AgentDecision,
+  EquityPoint,
+  Replay,
+  ReplayMetrics,
+  ReplaySignificance,
+  StartReplayBody,
+} from './types'
 
 export const REPLAY_POLL_MS = 1_000
 export const REPLAY_IDLE_POLL_MS = 30_000
@@ -11,6 +18,7 @@ export const replayKeys = {
   equity: (id: number) => ['replay-equity', id] as const,
   decisions: (id: number) => ['replay-decisions', id] as const,
   metrics: (id: number) => ['replay-metrics', id] as const,
+  significance: (id: number) => ['replay-significance', id] as const,
 }
 
 export function startReplay(body: StartReplayBody): Promise<Replay> {
@@ -31,6 +39,10 @@ export function getReplayDecisions(id: number): Promise<AgentDecision[]> {
 
 export function getReplayMetrics(id: number): Promise<ReplayMetrics> {
   return getJson(`/api/v1/replays/${id}/metrics`)
+}
+
+export function getReplaySignificance(id: number): Promise<ReplaySignificance> {
+  return getJson(`/api/v1/replays/${id}/significance`)
 }
 
 function pollWhileRunning(status: Replay['status'] | undefined): number {
@@ -74,6 +86,15 @@ export function useReplayMetrics(id: number | null) {
   return useQuery({
     queryKey: replayKeys.metrics(id ?? 0),
     queryFn: () => getReplayMetrics(id as number),
+    enabled: id !== null && replay.data?.status === 'DONE',
+  })
+}
+
+export function useReplaySignificance(id: number | null) {
+  const replay = useReplay(id)
+  return useQuery({
+    queryKey: replayKeys.significance(id ?? 0),
+    queryFn: () => getReplaySignificance(id as number),
     enabled: id !== null && replay.data?.status === 'DONE',
   })
 }

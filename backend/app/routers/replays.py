@@ -13,8 +13,12 @@ from app.schemas.live import EquityPointResponse
 from app.schemas.replay import (
     CalibrationBucketResponse,
     CreateReplayRequest,
+    RepeatSummaryResponse,
     ReplayMetricsResponse,
     ReplayResponse,
+    ReplaySignificanceResponse,
+    SharpeComparisonResponse,
+    SharpeIntervalResponse,
 )
 from app.services.metrics import ReplayMetrics
 from app.services.replay_service import (
@@ -23,6 +27,8 @@ from app.services.replay_service import (
     ReplayStartsTooEarlyError,
     UnknownReplayError,
 )
+from app.services.significance_service import ReplaySignificance, SignificanceService
+from app.services.statistics import SharpeComparison
 
 router = APIRouter(prefix="/replays", tags=["replays"])
 _jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="replay")
@@ -105,6 +111,17 @@ def read_metrics(
         raise _unknown_replay(replay_id) from None
 
 
+@router.get("/{replay_id}/significance", response_model=ReplaySignificanceResponse)
+def read_significance(
+    replay_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> ReplaySignificanceResponse:
+    try:
+        return _significance_response(SignificanceService(session).for_replay(replay_id))
+    except UnknownReplayError:
+        raise _unknown_replay(replay_id) from None
+
+
 def _replay_response(service: ReplayService, replay: Replay) -> ReplayResponse:
     scored = None
     if replay.status is ReplayStatus.DONE:
@@ -125,8 +142,42 @@ def _replay_response(service: ReplayService, replay: Replay) -> ReplayResponse:
         sma_replay_id=replay.sma_replay_id,
         random_replay_id=replay.random_replay_id,
         experiment_id=replay.experiment_id,
+        batch_id=replay.batch_id,
+        repeat_index=replay.repeat_index,
         metrics=scored,
     )
+
+
+def _significance_response(scored: ReplaySignificance) -> ReplaySignificanceResponse:
+    return ReplaySignificanceResponse(
+        replay_id=scored.replay_id,
+        batch_id=scored.batch_id,
+        repeat_index=scored.repeat_index,
+        sharpe_ci=(
+            None
+            if scored.sharpe_ci is None
+            else SharpeIntervalResponse(low=scored.sharpe_ci.low, high=scored.sharpe_ci.high)
+        ),
+        vs_hold=_comparison_response(scored.vs_hold),
+        vs_sma=_comparison_response(scored.vs_sma),
+        vs_random=_comparison_response(scored.vs_random),
+        batch=(
+            None
+            if scored.batch is None
+            else RepeatSummaryResponse(
+                count=scored.batch.count,
+                mean_return=scored.batch.mean_return,
+                std_return=scored.batch.std_return,
+                replay_ids=scored.batch_replay_ids,
+            )
+        ),
+    )
+
+
+def _comparison_response(compared: SharpeComparison | None) -> SharpeComparisonResponse | None:
+    if compared is None:
+        return None
+    return SharpeComparisonResponse(p_value=compared.p_value, significant=compared.significant)
 
 
 def _metrics_response(scored: ReplayMetrics) -> ReplayMetricsResponse:

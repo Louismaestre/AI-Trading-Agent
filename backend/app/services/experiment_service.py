@@ -1,6 +1,7 @@
-"""Load the experiment matrix and start one replay with that graph."""
+"""Load the experiment matrix and start linked replay repeats."""
 
 import datetime
+import uuid
 from pathlib import Path
 
 import yaml
@@ -9,10 +10,12 @@ from sqlalchemy.orm import Session
 from app.llm import StructuredLLM
 from app.models import Replay
 from app.schemas.experiments import ExperimentConfig, ExperimentGraph
-from app.services.agent_service import AgentService, build_agent_service
+from app.services.agent_service import AgentService, build_agent_service, llm_overrides
 from app.services.replay_service import ReplayService
 
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[2] / "config" / "experiments"
+MAX_REPEATS = 5
+REPEAT_TEMPERATURE = 0.2
 
 
 class UnknownExperimentError(LookupError):
@@ -64,13 +67,24 @@ class ExperimentService:
                 return config
         raise UnknownExperimentError(experiment_id)
 
-    def start(self, experiment_id: str, tickers: list[str] | None = None) -> Replay:
+    def start(
+        self,
+        experiment_id: str,
+        tickers: list[str] | None = None,
+        repeats: int = 1,
+    ) -> list[Replay]:
+        if repeats < 1 or repeats > MAX_REPEATS:
+            raise ValueError(f"repeats must be between 1 and {MAX_REPEATS}")
         config = self.get(experiment_id)
+        graph = _graph_payload(config, repeats)
+        temperature, cache = llm_overrides(graph)
         agents = self._agents or build_agent_service(
             self._session,
             config.graph.to_graph_config(),
             llm=self._llm,
             model=config.graph.model,
+            temperature=temperature,
+            cache=cache,
         )
         replays = ReplayService(
             self._session,
@@ -78,25 +92,41 @@ class ExperimentService:
             knowledge_cutoff=self._knowledge_cutoff,
             lookback_sessions=self._lookback_sessions,
         )
-        return replays.start(
-            name=config.name,
-            initial_capital=config.initial_capital,
-            start=config.start,
-            end=config.end,
-            tickers=tickers,
-            decision_frequency=config.decision_frequency,
-            experiment_id=config.id,
-            graph=config.graph.model_dump(),
-        )
+        batch_id = uuid.uuid4().hex[:16]
+        started: list[Replay] = []
+        for index in range(repeats):
+            name = config.name if repeats == 1 else f"{config.name} #{index + 1}"
+            started.append(
+                replays.start(
+                    name=name,
+                    initial_capital=config.initial_capital,
+                    start=config.start,
+                    end=config.end,
+                    tickers=tickers,
+                    decision_frequency=config.decision_frequency,
+                    experiment_id=config.id,
+                    graph=graph,
+                    batch_id=batch_id,
+                    repeat_index=index,
+                )
+            )
+        return started
 
     def run(self, replay_id: int, tickers: list[str] | None = None) -> Replay:
         """Run with the injected test LLM, or let ReplayService rebuild from `graph`."""
         replay = ReplayService(self._session).get(replay_id)
         agents = self._agents
         if agents is None and self._llm is not None:
-            stored = ExperimentGraph.model_validate(replay.graph or {})
+            raw = replay.graph or {}
+            stored = ExperimentGraph.model_validate(raw)
+            temperature, cache = llm_overrides(raw)
             agents = build_agent_service(
-                self._session, stored.to_graph_config(), llm=self._llm, model=stored.model
+                self._session,
+                stored.to_graph_config(),
+                llm=self._llm,
+                model=stored.model,
+                temperature=temperature,
+                cache=cache,
             )
         return ReplayService(
             self._session,
@@ -104,3 +134,11 @@ class ExperimentService:
             knowledge_cutoff=self._knowledge_cutoff,
             lookback_sessions=self._lookback_sessions,
         ).run(replay_id, tickers)
+
+
+def _graph_payload(config: ExperimentConfig, repeats: int) -> dict[str, object]:
+    payload: dict[str, object] = config.graph.model_dump()
+    if repeats > 1:
+        payload["temperature"] = REPEAT_TEMPERATURE
+        payload["cache"] = False
+    return payload
